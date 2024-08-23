@@ -48,6 +48,9 @@ def set_servo_angle(servo_name, angle, check_safety=True):
 
 def check_pitch_safety(pitch_angle):
     mouth_angle = get_current_angle('Mouth')
+    if mouth_angle is None:  # Mouth servo is deactivated
+        return pitch_angle  # No safety check needed if mouth is deactivated
+    
     mouth_midpoint = (servo_configs['Mouth']['range'][0] + servo_configs['Mouth']['range'][1]) / 2
     
     if mouth_angle < mouth_midpoint:
@@ -60,6 +63,9 @@ def check_pitch_safety(pitch_angle):
 
 def get_current_angle(servo_name):
     servo = servos[servo_name]
+    if servo.value is None:
+        return None  # Servo is deactivated
+    
     config = servo_configs[servo_name]
     min_angle, max_angle = config['range']
     
@@ -83,6 +89,16 @@ def reset_servo(servo_name):
 def reset_all_servos():
     for servo_name in servos:
         reset_servo(servo_name)
+
+def deactivate_all_servos():
+    for servo in servos.values():
+        servo.value = None
+    print("All servos deactivated.")
+
+def activate_all_servos():
+    for name, servo in servos.items():
+        set_servo_angle(name, servo_configs[name]['rest'])
+    print("All servos activated and reset to rest positions.")
 
 def move_to_angle(servo_name, target_angle, duration):
     start_angle = get_current_angle(servo_name)
@@ -113,6 +129,9 @@ def demo_animation():
     print("Starting demo animation. Press Ctrl+C to stop.")
     try:
         while True:
+            # Activate servos and ensure they're at rest positions
+            activate_all_servos()
+            
             # Run animation for about a minute
             start_time = time.time()
             while time.time() - start_time < 60:
@@ -125,15 +144,22 @@ def demo_animation():
                 
                 time.sleep(0.1)  # Small pause between movements
             
+            # Reset to rest positions
+            reset_all_servos()
+            
+            # Deactivate servos to power them down
+            deactivate_all_servos()
+            
             # Pause for a minute
             print("Pausing animation for 60 seconds...")
-            reset_all_servos()
             time.sleep(60)
             
     except KeyboardInterrupt:
         print("Demo animation stopped.")
     finally:
+        activate_all_servos()  # Ensure servos are active before resetting
         reset_all_servos()
+        deactivate_all_servos()
 
 def debug_servo_limits(servo_name):
     print(f"\nTesting {servo_name} limits:")
@@ -183,7 +209,9 @@ def main_menu():
             try:
                 index = int(servo_choice) - 1
                 servo_name = list(servo_configs.keys())[index]
+                activate_all_servos()  # Ensure servos are attached before debugging
                 debug_servo_limits(servo_name)
+                deactivate_all_servos()  # Detach after debugging
             except (ValueError, IndexError):
                 print("Invalid choice. Returning to main menu.")
         elif choice == '3':
@@ -194,11 +222,13 @@ def main_menu():
 
 if __name__ == "__main__":
     try:
-        reset_all_servos()  # Ensure all servos are in rest position at start
+        activate_all_servos()  # Ensure all servos are activated and at rest position at start
         main_menu()
     except KeyboardInterrupt:
         print("Program stopped by user")
     finally:
+        activate_all_servos()  # Ensure servos are active before final reset
         reset_all_servos()  # Ensure all servos return to rest position
+        deactivate_all_servos()  # Deactivate all servos before exiting
         for servo in servos.values():
             servo.close()
