@@ -104,8 +104,10 @@ def random_head_movement(duration):
     move_to_angle('Tilt', tilt_angle, duration)
 
 def random_mouth_movement(duration):
-    mouth_angle = random.uniform(45, 80)
-    move_to_angle('Mouth', mouth_angle, duration)
+    open_angle = random.uniform(45, 70)  # Open mouth to a random position
+    move_to_angle('Mouth', open_angle, duration / 2)  # Open mouth
+    time.sleep(0.1)  # Short pause
+    move_to_angle('Mouth', 80, duration / 2)  # Close mouth
 
 def demo_animation():
     print("Starting demo animation. Press Ctrl+C to stop.")
@@ -133,10 +135,67 @@ def demo_animation():
     finally:
         reset_all_servos()
 
+def debug_servo_limits(servo_name):
+    print(f"\nTesting {servo_name} limits:")
+    config = servo_configs[servo_name]
+    min_angle, max_angle = config['range']
+    
+    current_angle = config['rest']  # Start at rest position
+    set_servo_angle(servo_name, current_angle)
+    print(f"Starting at rest position: {current_angle} degrees")
+    
+    while True:
+        action = input("Enter '+' to increase by 1 degree, '-' to decrease by 1 degree, 'r' to reset, or 'q' to quit: ").strip().lower()
+        
+        if action == '+':
+            current_angle = min(current_angle + 1, max_angle)
+        elif action == '-':
+            current_angle = max(current_angle - 1, min_angle)
+        elif action == 'r':
+            current_angle = config['rest']
+        elif action == 'q':
+            break
+        else:
+            print("Invalid input. Please try again.")
+            continue
+        
+        set_servo_angle(servo_name, current_angle)
+        time.sleep(0.5)
+    
+    # Return to rest position before exiting
+    reset_servo(servo_name)
+
+def main_menu():
+    while True:
+        print("\nMain Menu:")
+        print("1. Run Demo Animation")
+        print("2. Debug Servo Limits")
+        print("3. Exit")
+        choice = input("Enter your choice (1-3): ").strip()
+
+        if choice == '1':
+            demo_animation()
+        elif choice == '2':
+            print("\nAvailable servos:")
+            for i, name in enumerate(servo_configs.keys(), 1):
+                print(f"{i}. {name}")
+            servo_choice = input("Enter the number of the servo to debug: ").strip()
+            try:
+                index = int(servo_choice) - 1
+                servo_name = list(servo_configs.keys())[index]
+                debug_servo_limits(servo_name)
+            except (ValueError, IndexError):
+                print("Invalid choice. Returning to main menu.")
+        elif choice == '3':
+            print("Exiting program.")
+            break
+        else:
+            print("Invalid choice. Please try again.")
+
 if __name__ == "__main__":
     try:
         reset_all_servos()  # Ensure all servos are in rest position at start
-        demo_animation()
+        main_menu()
     except KeyboardInterrupt:
         print("Program stopped by user")
     finally:
