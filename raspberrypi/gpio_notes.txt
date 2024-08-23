@@ -8,3 +8,10 @@ servo4, GPIO 18 # Mouth
 
 # Min/Max settings
 Pitch: Angle: -20.0, Servo value: -0.44 MAX
+Pitch: Angle: 15, Servo value: 0.3 MIN
+
+Tilt: Angle: -11, Servo value: -0.24
+Tilt: Angle: 11, Servo value: 0.24
+
+Base: Angle: -34, Servo value: -0.38
+Base: Angle: 34, Servo value: 0.38

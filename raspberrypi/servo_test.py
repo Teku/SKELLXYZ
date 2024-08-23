@@ -8,8 +8,8 @@ factory = PiGPIOFactory()
 # Servo configurations with angle limits
 servo_configs = {
     'Base':  {'pin': 23, 'range': (-90, 90), 'rest': 0},
-    'Pitch': {'pin': 24, 'range': (-45, 45), 'rest': 0},
-    'Tilt':  {'pin': 25, 'range': (-45, 45), 'rest': 0},
+    'Pitch': {'pin': 24, 'range': (-20, 15), 'rest': 0},
+    'Tilt':  {'pin': 25, 'range': (-11, 11), 'rest': 0},  # Updated range for Tilt
     'Mouth': {'pin': 18, 'range': (45, 80), 'rest': 80}  # Rest position is closed (80 degrees)
 }
 
@@ -25,10 +25,16 @@ def set_servo_angle(servo_name, angle):
     # Clamp the angle to the defined limits
     clamped_angle = max(min_angle, min(angle, max_angle))
     
-    # Convert the clamped angle to gpiozero's 0 to 1 range for mouth, -1 to 1 for others
+    # Convert the clamped angle to gpiozero's -1 to 1 range
     if servo_name == 'Mouth':
         # Special handling for mouth servo
         value = (clamped_angle - 45) / (80 - 45) * 0.78  # Maps 45 to 0 and 80 to 0.78
+    elif servo_name == 'Pitch':
+        # Special handling for pitch servo
+        value = (clamped_angle - (-20)) / (15 - (-20)) * (0.3 - (-0.44)) + (-0.44)
+    elif servo_name == 'Tilt':
+        # Special handling for tilt servo
+        value = clamped_angle / 11 * 0.24  # Maps -11 to -0.24 and 11 to 0.24
     else:
         value = (clamped_angle - min_angle) / (max_angle - min_angle) * 2 - 1
     
@@ -36,19 +42,22 @@ def set_servo_angle(servo_name, angle):
     
     print(f"{servo_name}: Angle: {clamped_angle}, Servo value: {value:.2f}")
 
-def move_servo_range(servo_name, angle_range=15, repetitions=5):
+def move_servo_range(servo_name, angle_range=None, repetitions=5):
     print(f"Testing {servo_name} movement")
     config = servo_configs[servo_name]
     min_angle, max_angle = config['range']
     center = (min_angle + max_angle) / 2
     
+    if angle_range is None:
+        angle_range = (max_angle - min_angle) / 2
+    
     for _ in range(repetitions):
-        # Move from center to +angle_range degrees
+        # Move from center to max allowed by angle_range
         for pos in range(int(center), int(min(center + angle_range, max_angle)) + 1):
             set_servo_angle(servo_name, pos)
             sleep(0.02)
         
-        # Move from +angle_range to -angle_range degrees
+        # Move from max to min allowed by angle_range
         for pos in range(int(min(center + angle_range, max_angle)), int(max(center - angle_range, min_angle)) - 1, -1):
             set_servo_angle(servo_name, pos)
             sleep(0.02)
@@ -94,12 +103,12 @@ def debug_servo_limits(servo_name):
     print(f"Starting at rest position: {current_angle} degrees")
     
     while True:
-        action = input("Enter '+' to increase by 5 degrees, '-' to decrease by 5 degrees, 'r' to reset, or 'q' to quit: ").strip().lower()
+        action = input("Enter '+' to increase by 1 degree, '-' to decrease by 1 degree, 'r' to reset, or 'q' to quit: ").strip().lower()
         
         if action == '+':
-            current_angle = min(current_angle + 5, max_angle)
+            current_angle = min(current_angle + 1, max_angle)
         elif action == '-':
-            current_angle = max(current_angle - 5, min_angle)
+            current_angle = max(current_angle - 1, min_angle)
         elif action == 'r':
             current_angle = config['rest']
         elif action == 'q':
