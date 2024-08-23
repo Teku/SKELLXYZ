@@ -11,7 +11,7 @@ servo_configs = {
     'Base':  {'pin': 23, 'range': (-90, 90)},
     'Pitch': {'pin': 24, 'range': (-45, 45)},
     'Tilt':  {'pin': 25, 'range': (-45, 45)},
-    'Mouth': {'pin': 18, 'range': (0, 90)}
+    'Mouth': {'pin': 18, 'range': (45, 80)}  # Angle range for mouth
 }
 
 # Create Servo objects
