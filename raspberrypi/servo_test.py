@@ -7,10 +7,10 @@ factory = PiGPIOFactory()
 
 # Servo configurations with angle limits
 servo_configs = {
-    'Base':  {'pin': 23, 'range': (-90, 90)},
-    'Pitch': {'pin': 24, 'range': (-45, 45)},
-    'Tilt':  {'pin': 25, 'range': (-45, 45)},
-    'Mouth': {'pin': 18, 'range': (45, 80)}  # Angle range for mouth
+    'Base':  {'pin': 23, 'range': (-90, 90), 'rest': 0},
+    'Pitch': {'pin': 24, 'range': (-45, 45), 'rest': 0},
+    'Tilt':  {'pin': 25, 'range': (-45, 45), 'rest': 0},
+    'Mouth': {'pin': 18, 'range': (45, 80), 'rest': 80}  # Rest position is closed (80 degrees)
 }
 
 # Create Servo objects
@@ -57,35 +57,41 @@ def move_servo_range(servo_name, angle_range=15, repetitions=5):
         for pos in range(int(max(center - angle_range, min_angle)), int(center) + 1):
             set_servo_angle(servo_name, pos)
             sleep(0.02)
+    
+    # Return to rest position
+    reset_servo(servo_name)
 
 def move_mouth(repetitions=2):
     print("Testing MOUTH movement")
     for _ in range(repetitions):
-        # Close mouth (move from 45 to 80 degrees)
-        for pos in range(45, 81):
-            set_servo_angle('Mouth', pos)
-            sleep(0.02)
-        
         # Open mouth (move from 80 to 45 degrees)
         for pos in range(80, 44, -1):
             set_servo_angle('Mouth', pos)
             sleep(0.02)
+        
+        # Close mouth (move from 45 to 80 degrees)
+        for pos in range(45, 81):
+            set_servo_angle('Mouth', pos)
+            sleep(0.02)
 
 def reset_servo(servo_name):
-    config = servo_configs[servo_name]
-    center = (config['range'][0] + config['range'][1]) / 2
-    set_servo_angle(servo_name, center)
+    rest_position = servo_configs[servo_name]['rest']
+    set_servo_angle(servo_name, rest_position)
     sleep(0.5)
-    print(f"{servo_name} reset to center position")
+    print(f"{servo_name} reset to rest position: {rest_position} degrees")
+
+def reset_all_servos():
+    for servo_name in servos:
+        reset_servo(servo_name)
 
 def debug_servo_limits(servo_name):
     print(f"\nTesting {servo_name} limits:")
     config = servo_configs[servo_name]
     min_angle, max_angle = config['range']
     
-    current_angle = (min_angle + max_angle) / 2  # Start at center
+    current_angle = config['rest']  # Start at rest position
     set_servo_angle(servo_name, current_angle)
-    print(f"Starting at center: {current_angle} degrees")
+    print(f"Starting at rest position: {current_angle} degrees")
     
     while True:
         action = input("Enter '+' to increase by 5 degrees, '-' to decrease by 5 degrees, 'r' to reset, or 'q' to quit: ").strip().lower()
@@ -95,7 +101,7 @@ def debug_servo_limits(servo_name):
         elif action == '-':
             current_angle = max(current_angle - 5, min_angle)
         elif action == 'r':
-            current_angle = (min_angle + max_angle) / 2
+            current_angle = config['rest']
         elif action == 'q':
             break
         else:
@@ -104,6 +110,9 @@ def debug_servo_limits(servo_name):
         
         set_servo_angle(servo_name, current_angle)
         sleep(0.5)
+    
+    # Return to rest position before exiting
+    reset_servo(servo_name)
 
 def test_single_servo():
     print("Available servos:")
@@ -133,13 +142,16 @@ def test_single_servo():
     else:
         print("Invalid choice. Exiting.")
 
+    # Ensure servo returns to rest position after testing
     reset_servo(servo_name)
 
 if __name__ == "__main__":
     try:
+        reset_all_servos()  # Ensure all servos are in rest position at start
         test_single_servo()
     except KeyboardInterrupt:
         print("Program stopped by user")
     finally:
+        reset_all_servos()  # Ensure all servos return to rest position
         for servo in servos.values():
             servo.close()
