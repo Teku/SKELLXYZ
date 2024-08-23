@@ -4,10 +4,10 @@ This project provides a Python script for controlling and testing servo motors, 
 
 ## Features
 
-- Godot Animation Tool
+- Godot Animation Tool (WIP)
 - Individual servo testing
 - Debugging servo limits
-- Customizable movement sequences
+- Customizable movement sequences (WIP)
 - Special handling for mouth servo
 
 ## Requirements
