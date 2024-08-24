@@ -41,7 +41,7 @@ sudo systemctl start pigpiod
 Run the script using Python 3:
 
 ```bash
-python3 servo_control.py
+python3 servo_test.py
 ```
 
 Follow the on-screen prompts to:
