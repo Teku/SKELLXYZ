@@ -1,0 +1,3 @@
+[submodule "raspberrypi/vendor/ChatterPi"]
+	path = raspberrypi/vendor/ChatterPi
+	url = git@github.com:ViennaMike/ChatterPi.git
