@@ -14,12 +14,19 @@ servo_configs = {
     'Mouth': {'pin': 18, 'range': (45, 80), 'rest': 80}  # Rest position is closed (80 degrees)
 }
 
+# Add this near the top of the file, after the servo_configs dictionary
+use_mouth_servo = False  # Set this to False to disable the Mouth servo
+
 # Create Servo objects
 servos = {}
 for name, config in servo_configs.items():
     servos[name] = Servo(config['pin'], min_pulse_width=0.5/1000, max_pulse_width=2.5/1000, pin_factory=factory)
 
 def set_servo_angle(servo_name, angle, check_safety=True):
+    if servo_name == 'Mouth' and not use_mouth_servo:
+        print(f"Mouth servo is disabled. Skipping movement.")
+        return
+
     config = servo_configs[servo_name]
     min_angle, max_angle = config['range']
     
@@ -47,6 +54,9 @@ def set_servo_angle(servo_name, angle, check_safety=True):
     print(f"{servo_name}: Angle: {clamped_angle}, Servo value: {value:.2f}")
 
 def check_pitch_safety(pitch_angle):
+    if not use_mouth_servo:
+        return pitch_angle  # No safety check needed if mouth is disabled
+    
     mouth_angle = get_current_angle('Mouth')
     if mouth_angle is None:  # Mouth servo is deactivated
         return pitch_angle  # No safety check needed if mouth is deactivated
@@ -62,6 +72,9 @@ def check_pitch_safety(pitch_angle):
     return pitch_angle
 
 def get_current_angle(servo_name):
+    if servo_name == 'Mouth' and not use_mouth_servo:
+        return None  # Mouth servo is disabled
+    
     servo = servos[servo_name]
     if servo.value is None:
         return None  # Servo is deactivated
@@ -81,6 +94,10 @@ def get_current_angle(servo_name):
         return (servo.value + 1) / 2 * (max_angle - min_angle) + min_angle
 
 def reset_servo(servo_name):
+    if servo_name == 'Mouth' and not use_mouth_servo:
+        print(f"Mouth servo is disabled. Skipping reset.")
+        return
+    
     rest_position = servo_configs[servo_name]['rest']
     set_servo_angle(servo_name, rest_position)
     time.sleep(0.5)
@@ -97,8 +114,10 @@ def deactivate_all_servos():
 
 def activate_all_servos():
     for name, servo in servos.items():
+        if name == 'Mouth' and not use_mouth_servo:
+            continue
         set_servo_angle(name, servo_configs[name]['rest'])
-    print("All servos activated and reset to rest positions.")
+    print("All active servos activated and reset to rest positions.")
 
 def move_to_angle(servo_name, target_angle, duration):
     start_angle = get_current_angle(servo_name)
@@ -120,6 +139,9 @@ def random_head_movement(duration):
     move_to_angle('Tilt', tilt_angle, duration)
 
 def random_mouth_movement(duration):
+    if not use_mouth_servo:
+        return  # Skip mouth movement if disabled
+    
     open_angle = random.uniform(45, 70)  # Open mouth to a random position
     move_to_angle('Mouth', open_angle, duration / 2)  # Open mouth
     time.sleep(0.1)  # Short pause
@@ -162,6 +184,10 @@ def demo_animation():
         deactivate_all_servos()
 
 def debug_servo_limits(servo_name):
+    if servo_name == 'Mouth' and not use_mouth_servo:
+        print("Mouth servo is currently disabled.")
+        return
+    
     print(f"\nTesting {servo_name} limits:")
     config = servo_configs[servo_name]
     min_angle, max_angle = config['range']
@@ -192,12 +218,15 @@ def debug_servo_limits(servo_name):
     reset_servo(servo_name)
 
 def main_menu():
+    global use_mouth_servo  # Add this line to allow modification of the global variable
+
     while True:
         print("\nMain Menu:")
         print("1. Run Demo Animation")
         print("2. Debug Servo Limits")
-        print("3. Exit")
-        choice = input("Enter your choice (1-3): ").strip()
+        print("3. Toggle Mouth Servo")  # Add this option
+        print("4. Exit")
+        choice = input("Enter your choice (1-4): ").strip()
 
         if choice == '1':
             demo_animation()
@@ -215,6 +244,9 @@ def main_menu():
             except (ValueError, IndexError):
                 print("Invalid choice. Returning to main menu.")
         elif choice == '3':
+            use_mouth_servo = not use_mouth_servo
+            print(f"Mouth servo is now {'enabled' if use_mouth_servo else 'disabled'}.")
+        elif choice == '4':
             print("Exiting program.")
             break
         else:
