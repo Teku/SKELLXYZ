@@ -14,9 +14,16 @@ servo_configs = {
     'Mouth': {'pin': 18, 'range': (45, 80)}  # Angle range for mouth
 }
 
+# Set this to False to disable the Mouth servo (so ChatterPi can use GPIO 18)
+use_mouth_servo = False
+
 # Create Servo objects
 servos = {}
 for name, config in servo_configs.items():
+    # Skip creating the Mouth servo if it's disabled
+    if name == 'Mouth' and not use_mouth_servo:
+        print("Mouth servo is disabled - GPIO 18 is available for ChatterPi")
+        continue
     servos[name] = Servo(config['pin'], min_pulse_width=0.5/1000, max_pulse_width=2.5/1000, pin_factory=factory)
 
 # Set up UDP socket
@@ -24,6 +31,11 @@ udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 udp_socket.bind(('0.0.0.0', 8888))
 
 def set_servo_angle(servo_name, angle):
+    # Check if mouth servo is disabled
+    if servo_name == 'Mouth' and not use_mouth_servo:
+        print("Mouth servo is disabled - ignoring command")
+        return
+    
     config = servo_configs[servo_name]
     min_angle, max_angle = config['range']
     
