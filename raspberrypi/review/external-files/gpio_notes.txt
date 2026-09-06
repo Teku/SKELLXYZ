@@ -1,0 +1,7 @@
+# Pin Factory
+export GPIOZERO_PIN_FACTORY=pigpio
+# Connections
+servo1, GPIO 23 # Base
+servo2, GPIO 24 # Pitch
+servo3, GPIO 25 # Tilt
+servo4, GPIO 18 # Mouth
