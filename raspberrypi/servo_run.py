@@ -139,4 +139,3 @@ if __name__ == "__main__":
         deactivate_all_servos()  # Deactivate all servos before exiting
         for servo in servos.values():
             servo.close()
-
