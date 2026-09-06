@@ -1,0 +1,33 @@
+# Example systemd unit for boot-time skeleton startup.
+#
+# Prefer the install script (writes the correct repo path automatically):
+#
+#   ./install_skeleton_service.sh
+#
+# Or install manually:
+#
+#   sudo cp skeleton.service.example /etc/systemd/system/skeleton.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable skeleton.service
+#   sudo systemctl start skeleton.service
+#
+# Check status:
+#   systemctl status skeleton.service
+#   screen -ls
+#
+# Migrating from /home/fpp/start_skeleton.sh:
+#   ./install_skeleton_service.sh
+
+[Unit]
+Description=Run Skeleton on Boot
+After=network.target pigpiod.service
+Wants=pigpiod.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=fpp
+ExecStart=/home/fpp/SKELLXYZ/start_skeleton.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -3,17 +3,13 @@ import time
 from gpiozero import Servo
 from gpiozero.pins.pigpio import PiGPIOFactory
 
+from servo_config import LIMITS_PATH, get_servo_configs
+
 # Use PiGPIO for hardware PWM (smoother servo control)
 factory = PiGPIOFactory()
 
-# Servo configurations
-# travel: full physical servo range in degrees (e.g., 190 degrees)
-# range: the artificial limits you want to use within that travel (e.g., -34 to 34)
-servo_configs = {
-    'Base':  {'pin': 23, 'travel': 190, 'range': (-36, 36), 'rest': 0},
-    'Pitch': {'pin': 24, 'travel': 190, 'range': (-24, 19), 'rest': -0.13},
-    'Tilt':  {'pin': 25, 'travel': 190, 'range': (-19, 19), 'rest': 0},
-}
+# Head servos — limits loaded from servo_limits.cfg (see servo_limits.cfg.example)
+servo_configs = get_servo_configs(["Base", "Pitch", "Tilt"])
 
 # Create Servo objects
 servos = {}
@@ -128,6 +124,7 @@ def demo_animation():
         deactivate_all_servos()
 
 if __name__ == "__main__":
+    print(f"Using servo limits from {LIMITS_PATH}")
     try:
         activate_all_servos()  # Ensure all servos are activated and at rest position at start
         demo_animation()

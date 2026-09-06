@@ -3,16 +3,12 @@ from gpiozero.pins.pigpio import PiGPIOFactory
 import socket
 from time import sleep
 
+from servo_config import LIMITS_PATH, get_servo_configs
+
 # Use PiGPIO for hardware PWM (smoother servo control)
 factory = PiGPIOFactory()
 
-# Servo configurations with angle limits
-servo_configs = {
-    'Base':  {'pin': 23, 'range': (-90, 90)},
-    'Pitch': {'pin': 24, 'range': (-45, 45)},
-    'Tilt':  {'pin': 25, 'range': (-45, 45)},
-    'Mouth': {'pin': 18, 'range': (45, 80)}  # Angle range for mouth
-}
+servo_configs = get_servo_configs()
 
 # Set this to False to disable the Mouth servo (so ChatterPi can use GPIO 18)
 use_mouth_servo = False
@@ -56,6 +52,7 @@ def set_servo_angle(servo_name, angle):
         print(f"Warning: {servo_name} angle clamped from {angle} to {clamped_angle}")
 
 try:
+    print(f"Using servo limits from {LIMITS_PATH}")
     print("Servo control ready. Waiting for commands...")
     while True:
         data, addr = udp_socket.recvfrom(1024)

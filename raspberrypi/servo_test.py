@@ -3,17 +3,12 @@ import time
 from gpiozero import Servo
 from gpiozero.pins.pigpio import PiGPIOFactory
 
+from servo_config import LIMITS_PATH, get_servo_configs, save_servo_limits
+
 # Use PiGPIO for hardware PWM (smoother servo control)
 factory = PiGPIOFactory()
 
-# Servo configurations
-# travel: full physical servo range in degrees (e.g., 190 degrees = ±95 degrees)
-servo_configs = {
-    'Base':  {'pin': 23, 'travel': 190, 'rest': 0},
-    'Pitch': {'pin': 24, 'travel': 190, 'rest': 0},
-    'Tilt':  {'pin': 25, 'travel': 190, 'rest': 0},
-    'Mouth': {'pin': 18, 'travel': 180, 'rest': 0},
-}
+servo_configs = get_servo_configs()
 
 # Create Servo objects
 servos = {}
@@ -154,42 +149,11 @@ def debug_servo_limits(servo_name):
         set_servo_angle(servo_name, current_angle)
         time.sleep(0.2)
     
-    # Save to config file
-    save_servo_config(servo_name, min_limit, max_limit)
-    
+    save_servo_limits(servo_name, min_limit, max_limit)
+    servo_configs[servo_name]["range"] = (min_limit, max_limit)
+
     # Return to rest position
     reset_servo(servo_name)
-
-def save_servo_config(servo_name, min_limit, max_limit):
-    """Save servo limits to a config file in key:value format"""
-    config_file = "servo_limits.cfg"
-    
-    # Read existing config if it exists
-    config_dict = {}
-    try:
-        with open(config_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    key, value = line.split(':')
-                    config_dict[key] = value
-    except FileNotFoundError:
-        pass
-    
-    # Update with new values
-    config_dict[f"{servo_name}_min"] = min_limit
-    config_dict[f"{servo_name}_max"] = max_limit
-    
-    # Write back to file
-    with open(config_file, 'w') as f:
-        # Write in the specified order from servo_configs
-        for servo_name in servo_configs.keys():
-            if f"{servo_name}_min" in config_dict:
-                f.write(f"{servo_name}_min:{config_dict[f'{servo_name}_min']}\n")
-            if f"{servo_name}_max" in config_dict:
-                f.write(f"{servo_name}_max:{config_dict[f'{servo_name}_max']}\n")
-    
-    print(f"\nConfig saved to {config_file}")
 
 def main_menu():
     while True:
@@ -218,6 +182,7 @@ def main_menu():
             print("Invalid choice. Please try again.")
 
 if __name__ == "__main__":
+    print(f"Using servo limits from {LIMITS_PATH}")
     try:
         activate_all_servos()  # Ensure all servos are activated and at rest position at start
         main_menu()

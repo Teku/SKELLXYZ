@@ -1,0 +1,22 @@
+# Per-machine servo limits — copy to servo_limits.cfg and tune for your skeleton.
+#
+#   cp servo_limits.cfg.example servo_limits.cfg
+#
+# servo_limits.cfg is gitignored (like .env). servo_test.py can update min/max
+# via "Debug Servo Limits". Edit rest positions here by hand.
+#
+# Head servos (used by servo_run.py at boot):
+Base_min:-36
+Base_max:36
+Base_rest:0
+Pitch_min:-24
+Pitch_max:19
+Pitch_rest:-0.13
+Tilt_min:-19
+Tilt_max:19
+Tilt_rest:0
+#
+# Mouth (used by servo_test.py / servo_server.py; ChatterPi jaw uses config.ini):
+Mouth_min:-9
+Mouth_max:72
+Mouth_rest:0

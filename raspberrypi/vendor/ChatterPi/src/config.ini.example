@@ -1,7 +1,14 @@
 # ChatterPi settings (audio, triggers, controller thresholds).
-# Jaw/mouth angles come from ../../servo_limits.cfg (Mouth_* keys).
+# Copy to config.ini on the Pi:
+#
+#   cp config.ini.example config.ini
+#
+# Jaw/mouth angles, travel, and GPIO pin are NOT configured here — they come
+# from raspberrypi/servo_limits.cfg (Mouth_* keys). Edit that file or use
+# servo_test.py → Debug Servo Limits → Mouth.
 
 [SERVO]
+; PWM pulse widths in microseconds (hardware timing, rarely changed)
 servo_min = 500
 servo_max = 2500
 
