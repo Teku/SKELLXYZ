@@ -33,6 +33,25 @@ No web server or camera stream is exposed.
 
 ## Test detection and basic tracking
 
+Full-body detection remains the default (`--detector person`). For seated,
+close-up indoor testing, use the frontal-face detector:
+
+```bash
+sudo apt-get install opencv-data
+python3 raspberrypi/camera_test.py --device /dev/video0 --detector face --seconds 60 --snapshot /tmp/skell-camera.jpg
+```
+
+Face mode uses OpenCV's frontal-face Haar cascade and the same target association
+and smoothing as person mode. Status reports `faces=` and snapshot labels show
+the detector mode. Look toward the camera and move slowly left/right; profiles,
+occlusion, and uneven lighting can cause misses. This detects faces, not identity.
+Measure `detector=...ms` on the Pi rather than assuming a particular speed.
+The cascade is found in OpenCV's Python data directory or the Debian OpenCV
+data directories. If installed elsewhere, pass `--face-cascade /path/to/model.xml`.
+Capture-only mode needs no cascade. No GPIO/audio behavior changes occur.
+
+For full-body testing:
+
 ```bash
 python3 raspberrypi/camera_test.py --device /dev/video0 --seconds 60 --snapshot /tmp/skell-camera.jpg
 ```

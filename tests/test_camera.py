@@ -1,11 +1,25 @@
 import sys
 from pathlib import Path
 import unittest
+import tempfile
+from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "raspberrypi"))
-from camera_test import Target, deduplicate
+from camera_test import Target, deduplicate, load_face_detector
 
 
 class TrackingTests(unittest.TestCase):
+    def test_face_cascade_loading_and_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "face.xml"
+            fake = SimpleNamespace(CascadeClassifier=lambda p: SimpleNamespace(empty=lambda: False))
+            with self.assertRaisesRegex(RuntimeError, "Face cascade missing"):
+                load_face_detector(fake, path)
+            path.write_text("placeholder")
+            self.assertFalse(load_face_detector(fake, path).empty())
+            fake.CascadeClassifier = lambda p: SimpleNamespace(empty=lambda: True)
+            with self.assertRaisesRegex(RuntimeError, "Invalid face cascade"):
+                load_face_detector(fake, path)
+
     def test_lock_smoothing_and_missing_observations(self):
         tracker = Target()
         self.assertEqual(tracker.update([(10, 10, 60, 120)], 0), (40, 70))

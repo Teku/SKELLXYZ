@@ -8,6 +8,22 @@ import signal
 import time
 
 
+def load_face_detector(cv2, explicit=None):
+    filename = "haarcascade_frontalface_default.xml"
+    roots = [Path("/usr/share/opencv4/haarcascades"), Path("/usr/share/opencv/haarcascades")]
+    bundled = getattr(getattr(cv2, "data", None), "haarcascades", None)
+    if bundled:
+        roots.insert(0, Path(bundled))
+    candidates = [Path(explicit)] if explicit else [root / filename for root in roots]
+    for path in candidates:
+        if path.is_file():
+            detector = cv2.CascadeClassifier(str(path))
+            if detector.empty():
+                raise RuntimeError("Invalid face cascade: " + str(path))
+            return detector
+    raise RuntimeError("Face cascade missing. Install opencv-data or supply --face-cascade /path/to/" + filename)
+
+
 def overlap(a, b):
     x = max(a[0], b[0])
     y = max(a[1], b[1])
@@ -57,6 +73,8 @@ def main():
     parser.add_argument("--device", default="/dev/video0", help="V4L2 device path or camera index")
     parser.add_argument("--seconds", type=float, default=60)
     parser.add_argument("--preview", action="store_true", help="Open a window on the Pi desktop (not plain SSH)")
+    parser.add_argument("--detector", choices=("person", "face"), default="person", help="Full-body person detector or close-up frontal faces")
+    parser.add_argument("--face-cascade", type=Path, help="Optional face cascade XML path")
     parser.add_argument("--capture-only", action="store_true", help="Check camera/light without person detection")
     parser.add_argument("--snapshot", type=Path, help="Overwrite this annotated JPEG once per second")
     parser.add_argument("--detect-hz", type=float, default=2, help="Requested detection rate; actual speed is measured")
@@ -92,10 +110,14 @@ def main():
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cap.set(cv2.CAP_PROP_FPS, 15)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        hog = None
+        hog = face = None
         if not args.capture_only:
-            hog = cv2.HOGDescriptor()
-            hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+            if args.detector == "face":
+                face = load_face_detector(cv2, args.face_cascade)
+            else:
+                hog = cv2.HOGDescriptor()
+                hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+        print("Detector: " + ("disabled" if args.capture_only else args.detector), flush=True)
         if args.snapshot:
             args.snapshot.parent.mkdir(parents=True, exist_ok=True)
         tracker = Target()
@@ -123,9 +145,12 @@ def main():
                 boxes, point = [], None
                 if dark:
                     tracker = Target()
-                elif hog is not None:
+                elif not args.capture_only:
                     begin = time.monotonic()
-                    found, _ = hog.detectMultiScale(frame, winStride=(8, 8), padding=(8, 8), scale=1.08)
+                    if face is not None:
+                        found = face.detectMultiScale(cv2.equalizeHist(gray), scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+                    else:
+                        found, _ = hog.detectMultiScale(frame, winStride=(8, 8), padding=(8, 8), scale=1.08)
                     detector_ms = (time.monotonic() - begin) * 1000
                     boxes = deduplicate([tuple(int(v) for v in b) for b in found])
                     point = tracker.update(boxes, time.monotonic())
@@ -133,15 +158,15 @@ def main():
                 next_detect = time.monotonic() + 1 / args.detect_hz
             if dark:
                 boxes, point = [], None
-            state = "LOW LIGHT" if dark else "CAPTURE ONLY" if hog is None else "TRACKING" if point else "CROWD/NO LOCK" if len(boxes) > 1 else "NO TARGET"
+            state = "LOW LIGHT" if dark else "CAPTURE ONLY" if args.capture_only else "TRACKING" if point else "CROWD/NO LOCK" if len(boxes) > 1 else "NO TARGET"
             for x, y, w, h in boxes:
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 220, 0), 2)
             if point:
                 cv2.circle(frame, tuple(int(v) for v in point), 6, (0, 0, 255), -1)
-            cv2.putText(frame, "%s light=%.0f" % (state, brightness), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            cv2.putText(frame, "%s %s light=%.0f" % (args.detector, state, brightness), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
             if now - last_report >= 1:
                 target = "none" if point is None else "x=%.2f y=%.2f" % (point[0] / 240 - 1, point[1] / 180 - 1)
-                print("%s people=%d target=%s light=%.1f detector=%.0fms" % (state, len(boxes), target, brightness, detector_ms), flush=True)
+                print("%s %s=%d target=%s light=%.1f detector=%.0fms" % (state, "faces" if args.detector == "face" else "people", len(boxes), target, brightness, detector_ms), flush=True)
                 if args.snapshot and not cv2.imwrite(str(args.snapshot), frame):
                     raise RuntimeError("Cannot write snapshot: " + str(args.snapshot))
                 last_report = now
