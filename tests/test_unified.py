@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "raspberrypi"))
 from servo_config import get_servo_configs
 from skeleton_motion import HEAD, Motion, validate_configs
 from skeleton_speech import Speech, process_chunk, settings, check_clip, CHATTER
-from skeleton_run import run
+from skeleton_run import Outputs, run
 
 
 class MotionTests(unittest.TestCase):
@@ -52,6 +52,15 @@ class MotionTests(unittest.TestCase):
 
 
 class SpeechTests(unittest.TestCase):
+    def test_output_release_and_reactivation(self):
+        outputs = Outputs(get_servo_configs(), True, True)
+        servo = SimpleNamespace(value=0.5)
+        outputs.servos["Mouth"] = servo
+        outputs.write({"Mouth": None})
+        self.assertIsNone(servo.value)
+        outputs.write({"Mouth": -9})
+        self.assertAlmostEqual(servo.value, -0.1)
+
     def test_one_clip_full_controller_lifecycle(self):
         clock = [0.0]
         def sleep(seconds):
@@ -74,6 +83,25 @@ class SpeechTests(unittest.TestCase):
             self.assertIn("Head gesture:", output.getvalue())
             self.assertIn("Speech finished; returning to rest", output.getvalue())
             self.assertIn("Stopped; servo outputs released", output.getvalue())
+            # Observe actual controller output policy through an entire idle pause.
+            for hold in (False, True):
+                clock[0] = 0
+                args.once, args.seconds, args.pause, args.hold_idle = False, 12, 20, hold
+                writes = []
+                def record(pose):
+                    writes.append((clock[0], dict(pose)))
+                with patch("skeleton_run.time.monotonic", side_effect=lambda: clock[0]), patch("skeleton_run.time.sleep", side_effect=sleep), patch("skeleton_run.Outputs.write", side_effect=record), redirect_stdout(io.StringIO()):
+                    run(args)
+                self.assertTrue(any(p["Mouth"] is not None for _, p in writes))
+                self.assertTrue(all(p["Mouth"] is None for t, p in writes if t > 0.8))
+                idle = [p for t, p in writes if 9 < t < 11]
+                self.assertTrue(idle)
+                for pose in idle:
+                    for name in HEAD:
+                        if hold:
+                            self.assertAlmostEqual(pose[name], get_servo_configs()[name]["rest"])
+                        else:
+                            self.assertIsNone(pose[name])
 
     def test_callback_completion_and_cleanup(self):
         streams = []

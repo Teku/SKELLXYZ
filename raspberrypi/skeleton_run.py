@@ -39,6 +39,10 @@ class Outputs:
     def write(self, pose):
         for name, angle in pose.items():
             cfg = self.configs[name]
+            if angle is None:
+                if name in self.servos:
+                    self.servos[name].value = None
+                continue
             if not math.isfinite(angle):
                 raise ValueError("Non-finite servo angle")
             low, high = cfg["range"]
@@ -82,12 +86,13 @@ def run(args):
         resources.callback(outputs.close)
         speech = Speech(options, configs["Mouth"], args.dry_run)
         resources.callback(speech.close)
-        outputs.write(dict(rest, Mouth=configs["Mouth"]["rest"]))
+        outputs.write(dict(rest, Mouth=None))
         started = time.monotonic()
         next_clip = started + 0.5
         speaking = False
         position = 0
         completed = 0
+        resting_since = None
         try:
             while not stopping:
                 now = time.monotonic()
@@ -116,21 +121,32 @@ def run(args):
                     target = gesture(configs, rng)
                     motion.move(target, now, rng.uniform(1.5, 3.0))
                     print("Head gesture: " + str({n: round(v, 1) for n, v in target.items()}), flush=True)
-                outputs.write(dict(motion.sample(now), Mouth=speech.jaw))
+                pose = motion.sample(now)
+                at_rest = not speaking and motion.finished(now) and motion.target == rest
+                if at_rest:
+                    if resting_since is None:
+                        resting_since = now
+                    if not getattr(args, "hold_idle", False) and now - resting_since >= 0.5:
+                        pose = {n: None for n in HEAD}
+                else:
+                    resting_since = None
+                # Match legacy ChatterPi: release the jaw after playback, rather
+                # than treating Mouth_rest as a calibrated closed-mouth angle.
+                outputs.write(dict(pose, Mouth=speech.jaw if speaking else None))
                 time.sleep(0.02)
         finally:
             speech.stop()
             # Finish any in-flight gesture, then ease home; all outputs close even on failure.
             now = time.monotonic()
             while not motion.finished(now):
-                outputs.write(dict(motion.sample(now), Mouth=configs["Mouth"]["rest"]))
+                outputs.write(dict(motion.sample(now), Mouth=None))
                 time.sleep(0.02)
                 now = time.monotonic()
             motion.move(rest, now, 1.5)
             while not motion.finished(time.monotonic()):
-                outputs.write(dict(motion.sample(time.monotonic()), Mouth=configs["Mouth"]["rest"]))
+                outputs.write(dict(motion.sample(time.monotonic()), Mouth=None))
                 time.sleep(0.02)
-            outputs.write(dict(rest, Mouth=configs["Mouth"]["rest"]))
+            outputs.write(dict(rest, Mouth=None))
     print("Stopped; servo outputs released", flush=True)
 
 
@@ -142,6 +158,7 @@ def main():
     parser.add_argument("--seconds", type=float, default=0, help="Stop trial after this many seconds (0: unlimited)")
     parser.add_argument("--speed", type=float, default=18, help="Maximum head speed in degrees/second")
     parser.add_argument("--pause", type=float, default=5, help="Pause between recordings in seconds")
+    parser.add_argument("--hold-idle", action="store_true", help="Keep head servos holding rest during pauses instead of releasing PWM")
     parser.add_argument("--seed", type=int, help="Reproducible gesture seed")
     args = parser.parse_args()
     for name in ("seconds", "pause", "speed"):

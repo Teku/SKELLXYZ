@@ -18,7 +18,14 @@ implement camera tracking or attract scheduling. Boot behavior is unchanged.
 - Jaw thresholds, enabled setting, and left-channel duplication come from the
   existing ChatterPi `config.ini`; all angle limits come from `servo_config.py`.
   ChatterPi's existing direction is preserved: quiet=max, loud=min. Between
-  clips, the jaw uses configured rest.
+  clips, the jaw PWM signal is released, matching the original player.
+  `Mouth_rest` is not assumed to be the physically closed position.
+- After the head reaches rest, it settles for 0.5 seconds, then releases PWM
+  during the remaining pause. Use `--hold-idle` if the mechanism needs holding
+  torque to prevent drooping. This flag applies to the head, not the jaw.
+  Releasing PWM does not switch off servo supply power; some digital servos
+  continue holding without a signal. Position is not sensed after release,
+  so a mechanism that drifts may move abruptly when reactivated.
 - This runner supports recorded mono/stereo 16-bit PCM WAVs and ChatterPi styles
   0 and 1. Unsupported source/style settings fail before GPIO initialization.
   Ambient tracks and the old trigger loop are not used by this trial.
