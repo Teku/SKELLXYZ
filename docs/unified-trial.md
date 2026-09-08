@@ -40,8 +40,15 @@ implement camera tracking or attract scheduling. Boot behavior is unchanged.
   0 and 1. Unsupported source/style settings fail before GPIO initialization.
   Ambient tracks and the old trigger loop are not used by this trial.
 - Ctrl+C/SIGTERM stops audio, finishes the current head trajectory, eases home,
-  and releases outputs. Shutdown therefore takes a few seconds. Device failures
+  and explicitly detaches all owned servos before closing the GPIO connection.
+  Shutdown therefore takes a few seconds; holding noise may continue during
+  the return-to-rest movement. Wait for `Stopped; servo outputs released`.
+  Device failures
   still close resources, but cannot guarantee a physical return to rest.
+
+Stopping the old `skeleton.service` does not necessarily stop a manually launched
+unified runner. Send Ctrl+C in that runner's terminal or SIGTERM to its process.
+Force-killing it (SIGKILL) bypasses Python cleanup and cannot perform detachment.
 
 Servo position is not sensed. Initial activation commands configured rest;
 smoothness guarantees apply to subsequent commanded head trajectories, not

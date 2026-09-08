@@ -19,6 +19,7 @@ class Outputs:
         self.configs = configs
         self.resources = ExitStack()
         self.servos = {}
+        self.closed = False
         if dry_run:
             return
         try:
@@ -51,7 +52,16 @@ class Outputs:
                 self.servos[name].value = max(low, min(high, angle)) / (cfg["travel"] / 2)
 
     def close(self):
-        self.resources.close()
+        if self.closed:
+            return
+        self.closed = True
+        # Explicitly stop PWM on every owned servo before closing any device
+        # or the pigpio connection. ExitStack attempts all releases even if
+        # one pin fails, and still closes the underlying resources afterward.
+        with ExitStack() as cleanup:
+            cleanup.callback(self.resources.close)
+            for servo in self.servos.values():
+                cleanup.callback(servo.detach)
 
 
 def gesture(configs, rng):
@@ -156,6 +166,7 @@ def run(args):
                 outputs.write(dict(pose, Mouth=speech.jaw if speaking else None))
                 time.sleep(0.02)
         finally:
+            print("Stopping: finishing motion and returning to rest before releasing PWM...", flush=True)
             speech.stop()
             # Finish any in-flight gesture, then ease home; all outputs close even on failure.
             now = time.monotonic()

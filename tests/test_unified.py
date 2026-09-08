@@ -68,6 +68,27 @@ class MotionTests(unittest.TestCase):
 
 
 class SpeechTests(unittest.TestCase):
+    def test_shutdown_detaches_all_before_closing_connection(self):
+        for fail in (False, True):
+            outputs = Outputs(get_servo_configs(), True, True)
+            events = []
+            def detach(name):
+                events.append("detach " + name)
+                if fail and name == "Tilt":
+                    raise RuntimeError("pin unavailable")
+            for name in (*HEAD, "Mouth"):
+                outputs.servos[name] = SimpleNamespace(detach=lambda n=name: detach(n))
+            outputs.resources.callback(lambda: events.append("close connection"))
+            if fail:
+                with self.assertRaises(RuntimeError):
+                    outputs.close()
+            else:
+                outputs.close()
+            self.assertEqual(set(events[:-1]), {"detach " + n for n in (*HEAD, "Mouth")})
+            self.assertEqual(events[-1], "close connection")
+            outputs.close()
+            self.assertEqual(len(events), 5)
+
     def test_output_release_and_reactivation(self):
         outputs = Outputs(get_servo_configs(), True, True)
         servo = SimpleNamespace(value=0.5)
