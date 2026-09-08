@@ -1,0 +1,152 @@
+import math
+from pathlib import Path
+import struct
+import sys
+import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
+import tempfile
+import wave
+import io
+from contextlib import redirect_stdout
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "raspberrypi"))
+from servo_config import get_servo_configs
+from skeleton_motion import HEAD, Motion, validate_configs
+from skeleton_speech import Speech, process_chunk, settings, check_clip, CHATTER
+from skeleton_run import run
+
+
+class MotionTests(unittest.TestCase):
+    def test_simultaneous_endpoints_speed_and_limits(self):
+        cfg = get_servo_configs()
+        motion = Motion(cfg, speed=10)
+        rest = dict(motion.pose)
+        motion.move({n: 1000 for n in HEAD}, 0, 0.1)
+        middle = motion.sample(motion.duration / 2)
+        for n in HEAD:
+            self.assertAlmostEqual(middle[n], (rest[n] + cfg[n]["range"][1]) / 2)
+        previous = motion.sample(0)
+        dt = motion.duration / 1000
+        for i in range(1, 1001):
+            pose = motion.sample(i * dt)
+            for n in HEAD:
+                self.assertLessEqual(abs(pose[n] - previous[n]) / dt, 10.0001)
+                self.assertTrue(cfg[n]["range"][0] <= pose[n] <= cfg[n]["range"][1])
+            previous = pose
+        self.assertEqual(motion.sample(motion.duration + 1), motion.target)
+
+    def test_retarget_preserves_position(self):
+        motion = Motion(get_servo_configs())
+        motion.move({n: 10 for n in HEAD}, 0)
+        pose = motion.sample(0.5)
+        motion.move({n: -10 for n in HEAD}, 0.5)
+        self.assertEqual(pose, motion.sample(0.5))
+
+    def test_invalid_limits_rejected(self):
+        for value in (float("nan"), 999):
+            cfg = get_servo_configs()
+            cfg["Base"]["rest"] = value
+            with self.assertRaises(ValueError):
+                validate_configs(cfg)
+
+
+class SpeechTests(unittest.TestCase):
+    def test_one_clip_full_controller_lifecycle(self):
+        clock = [0.0]
+        def sleep(seconds):
+            clock[0] += seconds
+            if clock[0] > 30:
+                raise AssertionError("Controller failed to finish one clip")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "short.wav"
+            with wave.open(str(path), "wb") as out:
+                out.setnchannels(1)
+                out.setsampwidth(2)
+                out.setframerate(8000)
+                out.writeframes(struct.pack("<h", 5000) * 800)
+            args = SimpleNamespace(clip=str(path), dry_run=True, speed=18, seed=1,
+                                   once=True, seconds=0, pause=0)
+            output = io.StringIO()
+            with patch("skeleton_run.time.monotonic", side_effect=lambda: clock[0]), patch("skeleton_run.time.sleep", side_effect=sleep), redirect_stdout(output):
+                run(args)
+            self.assertEqual(output.getvalue().count("Speaking:"), 1)
+            self.assertIn("Head gesture:", output.getvalue())
+            self.assertIn("Speech finished; returning to rest", output.getvalue())
+            self.assertIn("Stopped; servo outputs released", output.getvalue())
+
+    def test_callback_completion_and_cleanup(self):
+        streams = []
+        class Stream:
+            closed = False
+            running = True
+            def __init__(self, callback):
+                self.callback = callback
+            def is_active(self):
+                return self.running
+            def stop_stream(self):
+                self.running = False
+            def close(self):
+                self.closed = True
+        class Audio:
+            terminated = False
+            def open(self, **kwargs):
+                stream = Stream(kwargs["stream_callback"])
+                streams.append(stream)
+                return stream
+            def terminate(self):
+                self.terminated = True
+        audio = Audio()
+        api = SimpleNamespace(PyAudio=lambda: audio, paInt16=8, paComplete=1, paContinue=0, paAbort=2)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "short.wav"
+            with wave.open(str(path), "wb") as out:
+                out.setnchannels(1)
+                out.setsampwidth(2)
+                out.setframerate(8000)
+                out.writeframes(struct.pack("<hh", 5000, 5000))
+            with patch.dict(sys.modules, pyaudio=api):
+                speech = Speech(settings(), get_servo_configs()["Mouth"])
+                try:
+                    speech.start(path, 0)
+                    self.assertTrue(speech.active(0))
+                    data, status = streams[0].callback(None, 160, None, 0)
+                    self.assertEqual(status, api.paComplete)
+                    self.assertEqual(len(data), 4)
+                    self.assertEqual(speech.jaw, -9)
+                    speech.start(path, 1)
+                    self.assertTrue(streams[0].closed)
+                    speech.source.close()
+                    _, status = streams[1].callback(None, 160, None, 0)
+                    self.assertEqual(status, api.paAbort)
+                    with self.assertRaises(RuntimeError):
+                        speech.active(1)
+                finally:
+                    speech.close()
+                self.assertTrue(streams[1].closed)
+                self.assertTrue(audio.terminated)
+                self.assertEqual(speech.jaw, get_servo_configs()["Mouth"]["rest"])
+
+    def test_threshold_direction_and_full_scale(self):
+        options = settings()
+        for sample, expected in ((0, 72), (2000, 45), (3000, 18), (-32768, -9)):
+            _, jaw = process_chunk(struct.pack("<h", sample), 1, options, (-9, 72))
+            self.assertAlmostEqual(jaw, expected)
+        _, jaw = process_chunk(b"", 1, options, (-9, 72))
+        self.assertEqual(jaw, 72)
+
+    def test_stereo_envelope_uses_right_before_left_output_copy(self):
+        options = dict(settings(), output="LEFT")
+        result, jaw = process_chunk(struct.pack("<hh", 100, 5000), 2, options, (-9, 72))
+        self.assertEqual(jaw, -9)
+        self.assertEqual(struct.unpack("<hh", result), (100, 100))
+
+    def test_existing_vocals_supported(self):
+        clips = list((CHATTER / "vocals").glob("v[0-9][0-9].wav"))
+        self.assertTrue(clips)
+        for clip in clips:
+            check_clip(clip)
+
+
+if __name__ == "__main__":
+    unittest.main()

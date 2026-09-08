@@ -163,33 +163,39 @@ Home-directory `servo_*.py` copies and `~/servo_limits.cfg` were **not** in the 
 - [x] Document layout, config sources, and boot setup (this README)
 - [x] Add `skeleton.service.example` for reproducible systemd setup
 
-**On the Pi (when ready)**
+**Pi migration status**
 
-- [ ] Point `skeleton.service` at repo-root `start_skeleton.sh` (see [Migrate](#migrate-from-homefppstart_skeletonsh))
-- [ ] Confirm boot: `systemctl restart skeleton.service && screen -ls`
-- [ ] Archive or remove orphaned home copies:
-  ```bash
-  mkdir -p ~/servo_archive
-  mv ~/servo_*.py ~/run_skelly.sh ~/servo_limits.cfg ~/servo_archive/ 2>/dev/null
-  ```
-- [ ] Copy limits to repo: `cp ~/servo_limits.cfg ~/SKELLXYZ/raspberrypi/servo_limits.cfg`
-- [ ] Or from template: `cp raspberrypi/servo_limits.cfg.example raspberrypi/servo_limits.cfg`
+Reported complete on September 6, 2026:
+
+- [x] Point `skeleton.service` at the repo.
+- [x] Restart `skeleton.service`.
+- [x] Clear orphaned skeleton files from the home directory.
+
+Still to verify:
+
+- [ ] Confirm both `chatter` and `servo_run` sessions are running: `screen -ls`.
+- [ ] Confirm the intended per-machine limits exist at `raspberrypi/servo_limits.cfg`. If missing, restore tuned limits from an archive or initialize from `servo_limits.cfg.example` and tune them.
 
 **Future (optional)**
 
 - [ ] Remove stale duplicate configs inside `vendor/ChatterPi/src/` (`oldconfig.ini`, `difconfig.ini`, `backup/`)
 - [ ] Consolidate or delete unused scripts (`servo_server.py` if UDP control is not needed)
 
-### Finding other startup hooks (FPP / Linux)
+### Confirmed startup path
 
-If something else starts skeleton-related code:
+As confirmed on September 6, 2026, `skeleton.service` invokes the repo's
+`start_skeleton.sh`. This is the only startup path for skeleton-related code;
+there are no additional FPP hooks, cron jobs, or other services launching it.
+The old home-directory copies have been cleared and the service restarted.
 
-```bash
-systemctl list-unit-files | grep -i skeleton
-sudo crontab -u fpp -l
-cat /home/fpp/media/scripts/UserCallbackHook.sh 2>/dev/null
-grep -r skeleton /etc/systemd/system/ 2>/dev/null
-```
+## Unified controller development
+
+The first implementation on `feature/unified-skeleton-controller` coordinates
+recorded talking and smooth head movement in `raspberrypi/skeleton_run.py`.
+See [manual trial instructions](docs/unified-trial.md) and
+[the implementation plan](docs/unified-controller.md).
+The current boot launcher still runs ChatterPi and head animation separately.
+Camera tracking and attract scheduling are deferred.
 
 ## Safety
 
