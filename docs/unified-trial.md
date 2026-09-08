@@ -1,7 +1,7 @@
 # Unified speech and head movement trial
 
-This manual runner implements the first two development steps: coordinated
-recorded speech/jaw animation and simultaneous eased head gestures. It does not
+This manual runner implements coordinated recorded speech/jaw animation,
+simultaneous eased head gestures, and occasional silent expressions. It does not
 implement camera tracking or attract scheduling. Boot behavior is unchanged.
 
 ## Behavior
@@ -12,9 +12,19 @@ implement camera tracking or attract scheduling. Boot behavior is unchanged.
   35% of the calibrated range around rest.
 - Head gestures run during recordings. At the end of speech, the current gesture
   finishes and the head eases to rest before the next clip.
+- At each new event, there is a 35% chance of a silent expression: looking
+  around, nodding yes (Pitch), shaking no (Base), or playful alternating tilts
+  (Tilt). There are never two silent events in a row. Each expression ends at
+  rest and gets the normal pause before the next event. The jaw stays released.
+  All expression poses use at most 35% of calibrated travel on either side of
+  rest and the same speed-limited easing as speech gestures.
+  Set `--silent-chance 0` for the previous speech-only behavior, or
+  `--silent-chance 1` to alternate silent expressions and recordings.
+  `--once` always plays one recording, regardless of this setting.
 - Existing `v01.wav` through `v10.wav` files are cycled, excluding `.original.wav`
   copies. `--once` plays just one recording. The default inter-clip pause is five
-  seconds, in addition to the return-to-rest motion.
+  seconds, in addition to the return-to-rest motion. The pause also applies
+  after silent expressions.
 - Jaw thresholds, enabled setting, and left-channel duplication come from the
   existing ChatterPi `config.ini`; all angle limits come from `servo_config.py`.
   ChatterPi's existing direction is preserved: quiet=max, loud=min. Between

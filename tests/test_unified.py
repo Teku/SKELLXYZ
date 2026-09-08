@@ -15,9 +15,25 @@ from servo_config import get_servo_configs
 from skeleton_motion import HEAD, Motion, validate_configs
 from skeleton_speech import Speech, process_chunk, settings, check_clip, CHATTER
 from skeleton_run import Outputs, run
+from skeleton_gestures import NAMES, sequence
 
 
 class MotionTests(unittest.TestCase):
+    def test_expressions_are_bounded_and_return_to_rest(self):
+        cfg = get_servo_configs()
+        for name in NAMES:
+            for direction in (-1, 1):
+                steps = sequence(name, cfg, direction)
+                self.assertEqual(steps[-1][0], {n: cfg[n]["rest"] for n in HEAD})
+                for pose, duration in steps:
+                    self.assertGreater(duration, 0)
+                    for n in HEAD:
+                        low, high = cfg[n]["range"]
+                        rest = cfg[n]["rest"]
+                        self.assertTrue(rest + 0.35 * (low - rest) - 1e-9 <= pose[n] <= rest + 0.35 * (high - rest) + 1e-9)
+                        if name in ("yes", "no", "happy") and n != {"yes": "Pitch", "no": "Base", "happy": "Tilt"}[name]:
+                            self.assertEqual(pose[n], rest)
+
     def test_simultaneous_endpoints_speed_and_limits(self):
         cfg = get_servo_configs()
         motion = Motion(cfg, speed=10)
@@ -75,7 +91,7 @@ class SpeechTests(unittest.TestCase):
                 out.setframerate(8000)
                 out.writeframes(struct.pack("<h", 5000) * 800)
             args = SimpleNamespace(clip=str(path), dry_run=True, speed=18, seed=1,
-                                   once=True, seconds=0, pause=0)
+                                   once=True, seconds=0, pause=0, silent_chance=0)
             output = io.StringIO()
             with patch("skeleton_run.time.monotonic", side_effect=lambda: clock[0]), patch("skeleton_run.time.sleep", side_effect=sleep), redirect_stdout(output):
                 run(args)
@@ -102,6 +118,22 @@ class SpeechTests(unittest.TestCase):
                             self.assertAlmostEqual(pose[name], get_servo_configs()[name]["rest"])
                         else:
                             self.assertIsNone(pose[name])
+            # Force a silent expression, then verify the next event is speech.
+            clock[0] = 0
+            args.once, args.seconds, args.pause = False, 24, 1
+            args.silent_chance, args.hold_idle = 1, False
+            writes = []
+            output = io.StringIO()
+            with patch("skeleton_run.time.monotonic", side_effect=lambda: clock[0]), patch("skeleton_run.time.sleep", side_effect=sleep), patch("skeleton_run.Outputs.write", side_effect=record), redirect_stdout(output):
+                run(args)
+            events = [line for line in output.getvalue().splitlines() if line.startswith(("Silent gesture:", "Speaking:"))]
+            self.assertTrue(events[0].startswith("Silent gesture:"))
+            self.assertTrue(events[1].startswith("Speaking:"))
+            self.assertIn("Silent gesture finished; resting", output.getvalue())
+            # All servo frames before the first speech keep the jaw released.
+            first_jaw = next(i for i, (_, p) in enumerate(writes) if p["Mouth"] is not None)
+            self.assertGreater(first_jaw, 50)
+            self.assertTrue(any(p["Base"] is None for _, p in writes[:first_jaw]))
 
     def test_callback_completion_and_cleanup(self):
         streams = []

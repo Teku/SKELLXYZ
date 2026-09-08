@@ -10,6 +10,7 @@ import time
 
 from servo_config import get_servo_configs
 from skeleton_motion import HEAD, Motion, validate_configs
+from skeleton_gestures import NAMES, sequence
 from skeleton_speech import CHATTER, Speech, check_clip, settings
 
 
@@ -93,6 +94,9 @@ def run(args):
         position = 0
         completed = 0
         resting_since = None
+        silent_steps = []
+        silent_active = False
+        last_was_silent = False
         try:
             while not stopping:
                 now = time.monotonic()
@@ -106,23 +110,40 @@ def run(args):
                     # Complete the current gesture before returning, preserving smooth endpoints.
                     next_clip = max(now, motion.started + motion.duration) + 2.0 + args.pause
                 if not speaking and motion.finished(now):
-                    if motion.target != rest:
+                    if silent_active:
+                        if silent_steps:
+                            target, duration = silent_steps.pop(0)
+                            motion.move(target, now, duration)
+                        else:
+                            silent_active = False
+                            next_clip = now + args.pause
+                            print("Silent gesture finished; resting", flush=True)
+                    elif motion.target != rest:
                         motion.move(rest, now, 2.0)
                         next_clip = max(next_clip, now + motion.duration + args.pause)
                     elif args.once and completed:
                         break
                     elif now >= next_clip:
-                        clip = clips[position % len(clips)]
-                        print("Speaking: " + clip.name, flush=True)
-                        speech.start(clip, now)
-                        position += 1
-                        speaking = True
+                        if not args.once and not last_was_silent and rng.random() < getattr(args, "silent_chance", 0.35):
+                            name = rng.choice(NAMES)
+                            silent_steps = sequence(name, configs, rng.choice((-1, 1)))
+                            silent_active = last_was_silent = True
+                            target, duration = silent_steps.pop(0)
+                            motion.move(target, now, duration)
+                            print("Silent gesture: " + name, flush=True)
+                        else:
+                            clip = clips[position % len(clips)]
+                            print("Speaking: " + clip.name, flush=True)
+                            speech.start(clip, now)
+                            position += 1
+                            speaking = True
+                            last_was_silent = False
                 if speaking and motion.finished(now):
                     target = gesture(configs, rng)
                     motion.move(target, now, rng.uniform(1.5, 3.0))
                     print("Head gesture: " + str({n: round(v, 1) for n, v in target.items()}), flush=True)
                 pose = motion.sample(now)
-                at_rest = not speaking and motion.finished(now) and motion.target == rest
+                at_rest = not speaking and not silent_active and motion.finished(now) and motion.target == rest
                 if at_rest:
                     if resting_since is None:
                         resting_since = now
@@ -158,9 +179,12 @@ def main():
     parser.add_argument("--seconds", type=float, default=0, help="Stop trial after this many seconds (0: unlimited)")
     parser.add_argument("--speed", type=float, default=18, help="Maximum head speed in degrees/second")
     parser.add_argument("--pause", type=float, default=5, help="Pause between recordings in seconds")
+    parser.add_argument("--silent-chance", type=float, default=0.35, help="Chance of a silent expression instead of the next recording (0..1); never two in a row")
     parser.add_argument("--hold-idle", action="store_true", help="Keep head servos holding rest during pauses instead of releasing PWM")
     parser.add_argument("--seed", type=int, help="Reproducible gesture seed")
     args = parser.parse_args()
+    if not math.isfinite(args.silent_chance) or not 0 <= args.silent_chance <= 1:
+        parser.error("silent-chance must be between 0 and 1")
     for name in ("seconds", "pause", "speed"):
         value = getattr(args, name)
         if not math.isfinite(value) or value < 0 or (name == "speed" and value == 0):
