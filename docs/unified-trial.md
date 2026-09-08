@@ -55,7 +55,28 @@ smoothness guarantees apply to subsequent commanded head trajectories, not
 the unknown physical position at startup. The jaw keeps its existing stepped
 audio response. Verify travel and speed on the actual mechanism.
 
-## Local simulation
+## Single expressions and timed head-only movement
+
+Stop any other skeleton runner before issuing these commands on the Pi:
+
+```bash
+python3 raspberrypi/skeleton_run.py --action yes --speed 10
+python3 raspberrypi/skeleton_run.py --action No --speed 10
+python3 raspberrypi/skeleton_run.py --no-voice --seconds 60 --speed 10
+```
+
+`--action` accepts `yes`, `no`, `look`, and `happy` (case-insensitive), performs
+one complete expression, returns to rest, and exits. `--no-voice` chooses random
+silent expressions with `--pause` seconds of rest between them. Use `--pause 1`
+for shorter pauses. `--no-voice --once` performs one random expression.
+Both modes skip audio settings, WAV discovery, PyAudio, and jaw initialization.
+They still require the usual exclusive ownership of the head servos.
+`--seconds` caps activity time, including pauses; finishing the current motion
+and returning to rest can add a few seconds before outputs are detached.
+It can also shorten a single action if supplied with `--action`.
+Add `--dry-run` to any command for a hardware-free simulation.
+
+## Local simulation commands
 
 On Linux, ALSA diagnostics emitted during successful PyAudio initialization
 are condensed into one notice. Other diagnostics, initialization exceptions,

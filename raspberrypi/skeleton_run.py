@@ -74,9 +74,13 @@ def gesture(configs, rng):
 def run(args):
     configs = get_servo_configs()
     validate_configs(configs)
-    options = settings()
-    clips = [Path(args.clip).resolve()] if args.clip else sorted((CHATTER / "vocals").glob("v[0-9][0-9].wav"))
-    if not clips:
+    action = getattr(args, "action", None)
+    head_only = bool(action or getattr(args, "no_voice", False))
+    options = {"jaw_enabled": False} if head_only else settings()
+    clips = []
+    if not head_only:
+        clips = [Path(args.clip).resolve()] if args.clip else sorted((CHATTER / "vocals").glob("v[0-9][0-9].wav"))
+    if not head_only and not clips:
         raise ValueError("No vocal recordings found")
     for clip in clips:
         check_clip(clip)
@@ -95,8 +99,9 @@ def run(args):
             resources.callback(signal.signal, sig, previous)
         outputs = Outputs(configs, options["jaw_enabled"], args.dry_run)
         resources.callback(outputs.close)
-        speech = Speech(options, configs["Mouth"], args.dry_run, audio_debug=getattr(args, "audio_debug", False))
-        resources.callback(speech.close)
+        speech = None if head_only else Speech(options, configs["Mouth"], args.dry_run, audio_debug=getattr(args, "audio_debug", False))
+        if speech is not None:
+            resources.callback(speech.close)
         outputs.write(dict(rest, Mouth=None))
         started = time.monotonic()
         next_clip = started + 0.5
@@ -126,6 +131,8 @@ def run(args):
                             motion.move(target, now, duration)
                         else:
                             silent_active = False
+                            if action or (head_only and args.once):
+                                break
                             next_clip = now + args.pause
                             print("Silent gesture finished; resting", flush=True)
                     elif motion.target != rest:
@@ -134,8 +141,8 @@ def run(args):
                     elif args.once and completed:
                         break
                     elif now >= next_clip:
-                        if not args.once and not last_was_silent and rng.random() < getattr(args, "silent_chance", 0.35):
-                            name = rng.choice(NAMES)
+                        if head_only or (not args.once and not last_was_silent and rng.random() < getattr(args, "silent_chance", 0.35)):
+                            name = action or rng.choice(NAMES)
                             silent_steps = sequence(name, configs, rng.choice((-1, 1)))
                             silent_active = last_was_silent = True
                             target, duration = silent_steps.pop(0)
@@ -167,7 +174,8 @@ def run(args):
                 time.sleep(0.02)
         finally:
             print("Stopping: finishing motion and returning to rest before releasing PWM...", flush=True)
-            speech.stop()
+            if speech is not None:
+                speech.stop()
             # Finish any in-flight gesture, then ease home; all outputs close even on failure.
             now = time.monotonic()
             while not motion.finished(now):
@@ -185,16 +193,20 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Simulate speech and poses without GPIO or audio devices")
+    parser.add_argument("--action", type=str.lower, choices=NAMES, help="Perform one silent expression and exit (yes, no, look, happy)")
+    parser.add_argument("--no-voice", action="store_true", help="Run only silent head expressions; never open audio or jaw devices")
     parser.add_argument("--audio-debug", action="store_true", help="Show full ALSA startup diagnostics")
     parser.add_argument("--clip", help="Play a particular 16-bit PCM WAV instead of cycling existing vocals")
-    parser.add_argument("--once", action="store_true", help="Play one clip, return to rest, and exit")
+    parser.add_argument("--once", action="store_true", help="Play one clip (or one random expression with --no-voice), return to rest, and exit")
     parser.add_argument("--seconds", type=float, default=0, help="Stop trial after this many seconds (0: unlimited)")
     parser.add_argument("--speed", type=float, default=18, help="Maximum head speed in degrees/second")
-    parser.add_argument("--pause", type=float, default=5, help="Pause between recordings in seconds")
+    parser.add_argument("--pause", type=float, default=5, help="Pause between events in seconds")
     parser.add_argument("--silent-chance", type=float, default=0.35, help="Chance of a silent expression instead of the next recording (0..1); never two in a row")
     parser.add_argument("--hold-idle", action="store_true", help="Keep head servos holding rest during pauses instead of releasing PWM")
     parser.add_argument("--seed", type=int, help="Reproducible gesture seed")
     args = parser.parse_args()
+    if (args.action or args.no_voice) and args.clip:
+        parser.error("--clip cannot be combined with --action or --no-voice")
     if not math.isfinite(args.silent_chance) or not 0 <= args.silent_chance <= 1:
         parser.error("silent-chance must be between 0 and 1")
     for name in ("seconds", "pause", "speed"):

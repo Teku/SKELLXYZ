@@ -70,6 +70,30 @@ class MotionTests(unittest.TestCase):
 
 
 class SpeechTests(unittest.TestCase):
+    def test_head_only_modes_never_initialize_audio(self):
+        for action in (*NAMES, None):
+            clock = [0.0]
+            def sleep(seconds):
+                clock[0] += seconds
+                if clock[0] > 45:
+                    raise AssertionError("Head-only mode failed to stop")
+            args = SimpleNamespace(action=action, no_voice=True, clip=None,
+                                   dry_run=True, speed=10, seed=1, once=False,
+                                   seconds=0 if action else 20, pause=0.6)
+            output = io.StringIO()
+            poses = []
+            with patch("skeleton_run.settings", side_effect=AssertionError("Audio config accessed")), patch("skeleton_run.Speech", side_effect=AssertionError("Audio initialized")), patch("skeleton_run.check_clip", side_effect=AssertionError("Clip accessed")), patch("skeleton_run.time.monotonic", side_effect=lambda: clock[0]), patch("skeleton_run.time.sleep", side_effect=sleep), patch("skeleton_run.Outputs.write", side_effect=lambda pose: poses.append(pose)), redirect_stdout(output):
+                run(args)
+            events = [line for line in output.getvalue().splitlines() if line.startswith("Silent gesture:")]
+            if action:
+                self.assertEqual(events, ["Silent gesture: " + action])
+            else:
+                self.assertGreaterEqual(len(events), 2)
+                self.assertGreaterEqual(clock[0], 20)
+            self.assertNotIn("Speaking:", output.getvalue())
+            self.assertTrue(all(pose["Mouth"] is None for pose in poses))
+            self.assertIn("Stopped; servo outputs released", output.getvalue())
+
     def test_startup_diagnostics_keep_errors_and_support_debug(self):
         diagnostics = b"ALSA lib pcm.c: Unknown PCM surround51\nOther warning\n"
         output = io.StringIO()
