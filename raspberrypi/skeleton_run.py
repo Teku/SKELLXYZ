@@ -95,7 +95,7 @@ def run(args):
             resources.callback(signal.signal, sig, previous)
         outputs = Outputs(configs, options["jaw_enabled"], args.dry_run)
         resources.callback(outputs.close)
-        speech = Speech(options, configs["Mouth"], args.dry_run)
+        speech = Speech(options, configs["Mouth"], args.dry_run, audio_debug=getattr(args, "audio_debug", False))
         resources.callback(speech.close)
         outputs.write(dict(rest, Mouth=None))
         started = time.monotonic()
@@ -185,6 +185,7 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Simulate speech and poses without GPIO or audio devices")
+    parser.add_argument("--audio-debug", action="store_true", help="Show full ALSA startup diagnostics")
     parser.add_argument("--clip", help="Play a particular 16-bit PCM WAV instead of cycling existing vocals")
     parser.add_argument("--once", action="store_true", help="Play one clip, return to rest, and exit")
     parser.add_argument("--seconds", type=float, default=0, help="Stop trial after this many seconds (0: unlimited)")

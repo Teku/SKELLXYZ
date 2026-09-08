@@ -57,6 +57,12 @@ audio response. Verify travel and speed on the actual mechanism.
 
 ## Local simulation
 
+On Linux, ALSA diagnostics emitted during successful PyAudio initialization
+are condensed into one notice. Other diagnostics, initialization exceptions,
+and stream/playback errors remain visible. Use `--audio-debug` to see the full
+startup output when diagnosing sound problems. This changes logging only;
+it does not modify ALSA/FPP configuration or select a different output device.
+
 From the repository root (no GPIO/PyAudio packages or hardware required):
 
 ```bash

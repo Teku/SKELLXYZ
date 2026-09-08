@@ -8,6 +8,7 @@ from configparser import ConfigParser
 from pathlib import Path
 import sys
 import wave
+from skeleton_audio_init import initialize
 
 CHATTER = Path(__file__).resolve().parent / "vendor" / "ChatterPi" / "src"
 
@@ -62,7 +63,7 @@ def check_clip(path):
 
 
 class Speech:
-    def __init__(self, options, mouth, dry_run=False):
+    def __init__(self, options, mouth, dry_run=False, audio_debug=False):
         self.options, self.mouth, self.dry_run = options, mouth, dry_run
         self.jaw = mouth["rest"]
         self.stream = self.source = self.audio = None
@@ -71,7 +72,7 @@ class Speech:
         if not dry_run:
             import pyaudio
             self.api = pyaudio
-            self.audio = pyaudio.PyAudio()
+            self.audio = initialize(pyaudio.PyAudio, debug=audio_debug)
 
     def start(self, path, now):
         self.stop()

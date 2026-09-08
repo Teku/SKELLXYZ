@@ -16,6 +16,8 @@ from skeleton_motion import HEAD, Motion, validate_configs
 from skeleton_speech import Speech, process_chunk, settings, check_clip, CHATTER
 from skeleton_run import Outputs, run
 from skeleton_gestures import NAMES, sequence
+from skeleton_audio_init import initialize, report
+from contextlib import redirect_stderr
 
 
 class MotionTests(unittest.TestCase):
@@ -68,6 +70,25 @@ class MotionTests(unittest.TestCase):
 
 
 class SpeechTests(unittest.TestCase):
+    def test_startup_diagnostics_keep_errors_and_support_debug(self):
+        diagnostics = b"ALSA lib pcm.c: Unknown PCM surround51\nOther warning\n"
+        output = io.StringIO()
+        with redirect_stderr(output):
+            report(diagnostics, True)
+        self.assertNotIn("Unknown PCM", output.getvalue())
+        self.assertIn("Other warning", output.getvalue())
+        self.assertIn("1 ALSA", output.getvalue())
+        output = io.StringIO()
+        with redirect_stderr(output):
+            report(diagnostics, False)
+        self.assertEqual(output.getvalue(), diagnostics.decode())
+        token = object()
+        self.assertIs(initialize(lambda: token, debug=True), token)
+        def fail():
+            raise RuntimeError("No audio device")
+        with self.assertRaises(RuntimeError):
+            initialize(fail, debug=True)
+
     def test_shutdown_detaches_all_before_closing_connection(self):
         for fail in (False, True):
             outputs = Outputs(get_servo_configs(), True, True)
