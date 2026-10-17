@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "raspberrypi"))
 from skeleton_preferences import validate, read, save
 from skeleton_speech import gain_pcm
-from skeleton_dashboard import Controller, main
+from skeleton_dashboard import Controller, Camera, main
 from skeleton_dashboard import handler_for
 from http.server import ThreadingHTTPServer
 import threading
@@ -22,6 +22,26 @@ from skeleton_run import run
 
 
 class DashboardTests(unittest.TestCase):
+    def test_camera_worker_validation_and_private_url(self):
+        camera = Camera()
+        try:
+            with self.assertRaises(ValueError):
+                camera.start({"url": "http://camera/live"})
+            process = MagicMock()
+            process.poll.return_value = None
+            with patch("skeleton_dashboard.subprocess.Popen", return_value=process) as spawn, patch("skeleton_dashboard.threading.Thread"):
+                url = "rtsp://user:secret@camera/live"
+                camera.start({"url": url, "detector": "face", "seconds": 30})
+                self.assertNotIn(url, " ".join(spawn.call_args.args[0]))
+                self.assertEqual(spawn.call_args.kwargs["env"]["SKELL_RTSP_URL"], url)
+                self.assertNotIn(url, json.dumps(camera.status()))
+                with self.assertRaises(ValueError):
+                    camera.start({"url": url})
+                camera.stop()
+                process.terminate.assert_called_once()
+        finally:
+            camera.close()
+
     def test_startup_runs_show_unless_start_stopped(self):
         for flags, should_start in (([], True), (["--start-stopped"], False)):
             with self.subTest(flags=flags), patch("sys.argv", ["dashboard", *flags]), patch.dict("os.environ", {"SKELL_DASHBOARD_PASSWORD": "test-password"}), patch("skeleton_dashboard.Controller") as factory, patch("skeleton_dashboard.ThreadingHTTPServer") as server, patch("skeleton_dashboard.signal.signal"), redirect_stdout(io.StringIO()):

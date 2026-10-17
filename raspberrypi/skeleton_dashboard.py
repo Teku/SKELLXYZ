@@ -13,12 +13,78 @@ import signal
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 
 from skeleton_preferences import PATH, catalog, read, save
 from skeleton_gestures import NAMES
+from camera_source import validate_rtsp
 
 ROOT = Path(__file__).resolve().parent
+
+
+class Camera:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.process = None
+        self.logs = deque(maxlen=60)
+        self.directory = tempfile.TemporaryDirectory(prefix="skell-camera-")
+        self.snapshot = Path(self.directory.name) / "preview.jpg"
+
+    def status(self):
+        with self.lock:
+            return dict(running=self.process is not None and self.process.poll() is None,
+                        logs=list(self.logs), preview=self.snapshot.exists(),
+                        configured=bool(os.environ.get("SKELL_RTSP_URL")))
+
+    def start(self, data):
+        with self.lock:
+            if self.process is not None and self.process.poll() is None:
+                raise ValueError("Stop the current camera test first")
+            mode = data.get("detector", "capture")
+            if mode not in ("capture", "person", "face"):
+                raise ValueError("Choose capture, person or face")
+            seconds = data.get("seconds", 60)
+            if type(seconds) is not int or not 5 <= seconds <= 3600:
+                raise ValueError("Camera duration must be 5–3600 seconds")
+            url = data.get("url") or os.environ.get("SKELL_RTSP_URL")
+            if not isinstance(url, str) or not url:
+                raise ValueError("Enter the RTSP URL or configure SKELL_RTSP_URL")
+            validate_rtsp(url)
+            command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp",
+                       "--seconds", str(seconds), "--snapshot", str(self.snapshot)]
+            command += ["--capture-only"] if mode == "capture" else ["--detector", mode]
+            env = dict(os.environ, SKELL_RTSP_URL=url)
+            if self.snapshot.exists():
+                self.snapshot.unlink()
+            self.logs.clear()
+            self.process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+            threading.Thread(target=self._collect, args=(self.process, url), daemon=True).start()
+
+    def _collect(self, process, url):
+        for line in process.stdout:
+            with self.lock:
+                self.logs.append(line.rstrip().replace(url, "[RTSP source]"))
+        process.stdout.close()
+        code = process.wait()
+        with self.lock:
+            self.logs.append("Camera test exited with code " + str(code))
+
+    def stop(self):
+        with self.lock:
+            if self.process is not None and self.process.poll() is None:
+                self.process.terminate()
+
+    def close(self):
+        self.stop()
+        if self.process is not None:
+            try:
+                self.process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self.process.kill()  # Camera worker has no servo ownership.
+                self.process.wait()
+        self.directory.cleanup()
 
 
 class Controller:
@@ -90,7 +156,7 @@ class Controller:
                 self.activity = "Stopping; waiting for servo release"
 
 
-def handler_for(controller, password):
+def handler_for(controller, password, camera=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -119,9 +185,20 @@ def handler_for(controller, password):
                     self.send(401, {"error": "Enter username admin and the dashboard password"})
                     return
                 try:
-                    self.send(200, controller.status())
+                    status = controller.status()
+                    if camera is not None:
+                        status["camera"] = camera.status()
+                    self.send(200, status)
                 except (ValueError, OSError) as exc:
                     self.send(500, {"error": str(exc)})
+            elif self.path == "/api/camera/preview" and camera is not None:
+                if not self.authorized():
+                    self.send(401, {"error": "Sign in first"})
+                    return
+                try:
+                    self.send(200, camera.snapshot.read_bytes(), "image/jpeg")
+                except FileNotFoundError:
+                    self.send(404, {"error": "Waiting for a camera frame"})
             else:
                 self.send(404, {"error": "Not found"})
 
@@ -140,7 +217,11 @@ def handler_for(controller, password):
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
                     raise ValueError("JSON object required")
-                if self.path == "/api/settings":
+                if self.path == "/api/camera/start" and camera is not None:
+                    camera.start(data)
+                elif self.path == "/api/camera/stop" and camera is not None:
+                    camera.stop()
+                elif self.path == "/api/settings":
                     with controller.lock:
                         save(data, controller.preferences)
                 elif self.path == "/api/start":
@@ -167,7 +248,8 @@ def main():
     if len(password) < 8 or not password.isascii():
         parser.error("Use a password of at least 8 ASCII characters")
     controller = Controller(args.dry_run)
-    server = ThreadingHTTPServer((args.host, args.port), handler_for(controller, password))
+    camera = Camera()
+    server = ThreadingHTTPServer((args.host, args.port), handler_for(controller, password, camera))
     def shutdown(signum, frame):
         threading.Thread(target=server.shutdown, daemon=True).start()
     signal.signal(signal.SIGTERM, shutdown)
@@ -184,6 +266,7 @@ def main():
         pass
     finally:
         controller.stop()
+        camera.close()
         if controller.process is not None:
             controller.process.wait()  # Do not kill the runner before GPIO cleanup.
         server.server_close()

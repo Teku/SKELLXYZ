@@ -171,8 +171,11 @@ def main():
             if now - last_report >= 1:
                 target = "none" if point is None else "x=%.2f y=%.2f" % (point[0] / 240 - 1, point[1] / 180 - 1)
                 print("%s %s=%d target=%s light=%.1f detector=%.0fms" % (state, "faces" if args.detector == "face" else "people", len(boxes), target, brightness, detector_ms), flush=True)
-                if args.snapshot and not cv2.imwrite(str(args.snapshot), frame):
-                    raise RuntimeError("Cannot write snapshot: " + str(args.snapshot))
+                if args.snapshot:
+                    temporary = args.snapshot.with_name(args.snapshot.stem + ".tmp" + args.snapshot.suffix)
+                    if not cv2.imwrite(str(temporary), frame):
+                        raise RuntimeError("Cannot write camera snapshot")
+                    os.replace(temporary, args.snapshot)
                 last_report = now
             if args.preview:
                 cv2.imshow("Skeleton camera test - q to quit", frame)

@@ -110,5 +110,18 @@ graceful on Linux. Windows simulation terminates the child process directly.
 Ctrl+C on the dashboard stops its runner and waits for cleanup. Do not force-kill
 the runner: that skips servo release. Timing is cooperative; shutdown can take
 several seconds. The service installer above replaces the old boot startup when
-you run it. RTSP monitoring and automatic
-vision-driven behavior remain separate from this dashboard.
+you run it. RTSP diagnostics are available below; automatic vision-driven behavior is not yet connected.
+
+## RTSP camera test
+
+Use Camera test after signing in. Enter the RTSP URL, select Capture only,
+Full body, or Face, and a duration (5-3600 seconds). The panel shows annotated
+snapshots and tracking/light/timing logs. The last frame remains after the test
+ends; check Running/Stopped for its state. Camera tests start manually and do
+not drive servos. They can run alongside the show, but detection adds Pi load.
+Start with capture only. Install python3-opencv on the Pi if needed.
+
+The URL is passed through the worker environment, not command arguments, saved
+settings, or the status API. For repeated use add SKELL_RTSP_URL to the protected
+/etc/skeleton-dashboard.env file using sudoedit, and restart the service.
+Stop camera test stops only the camera; stopping the dashboard stops both workers.
