@@ -1,2 +1,7 @@
 # Per-machine servo calibration (copy from servo_limits.cfg.example)
 raspberrypi/servo_limits.cfg
+raspberrypi/dashboard-settings.json
+raspberrypi/dashboard-settings.tmp
+raspberrypi/.skeleton.lock
+raspberrypi/__pycache__/
+tests/__pycache__/

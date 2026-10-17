@@ -190,6 +190,11 @@ The old home-directory copies have been cleared and the service restarted.
 
 ## Unified controller development
 
+A local web control panel is available in `raspberrypi/skeleton_dashboard.py`.
+It manages a unified runner with status/logs, show and gesture controls, saying
+selection, voice/music volume, and timing. See [dashboard setup](docs/dashboard.md).
+The current boot launcher remains unchanged until the dashboard is tested on the Pi.
+
 The first implementation on `feature/unified-skeleton-controller` coordinates
 recorded talking and smooth head movement in `raspberrypi/skeleton_run.py`.
 See [manual trial instructions](docs/unified-trial.md) and

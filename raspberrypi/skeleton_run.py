@@ -11,6 +11,7 @@ import time
 from servo_config import get_servo_configs
 from skeleton_motion import HEAD, Motion, validate_configs
 from skeleton_gestures import NAMES, sequence
+from skeleton_lock import hardware_lock
 from skeleton_speech import CHATTER, Speech, check_clip, settings
 
 
@@ -74,12 +75,21 @@ def gesture(configs, rng):
 def run(args):
     configs = get_servo_configs()
     validate_configs(configs)
+    preferences_path = getattr(args, "preferences", None)
+    preferences = None
+    if preferences_path:
+        from skeleton_preferences import read
+        preferences = read(preferences_path)
+        for name in ("pause", "speed", "silent_chance", "hold_idle"):
+            setattr(args, name, preferences[name])
     action = getattr(args, "action", None)
     head_only = bool(action or getattr(args, "no_voice", False))
     options = {"jaw_enabled": False} if head_only else settings()
     clips = []
     if not head_only:
         clips = [Path(args.clip).resolve()] if args.clip else sorted((CHATTER / "vocals").glob("v[0-9][0-9].wav"))
+    if preferences and preferences["clips"] and not args.clip and not head_only:
+        clips = [CHATTER / "vocals" / name for name in preferences["clips"]]
     if not head_only and not clips:
         raise ValueError("No vocal recordings found")
     for clip in clips:
@@ -112,9 +122,27 @@ def run(args):
         silent_steps = []
         silent_active = False
         last_was_silent = False
+        music_playing = None
+        next_settings = 0.0
         try:
             while not stopping:
                 now = time.monotonic()
+                if preferences_path and now >= next_settings:
+                    try:
+                        updated = read(preferences_path)
+                        if updated != preferences:
+                            preferences = updated
+                            for name in ("pause", "speed", "silent_chance", "hold_idle"):
+                                setattr(args, name, preferences[name])
+                            motion.speed = args.speed
+                            if not args.clip and not head_only:
+                                clips = [CHATTER / "vocals" / name for name in preferences["clips"]] if preferences["clips"] else sorted((CHATTER / "vocals").glob("v[0-9][0-9].wav"))
+                            print("Settings updated", flush=True)
+                    except (ValueError, OSError) as exc:
+                        print("Settings not applied: " + str(exc), flush=True)
+                    next_settings = now + 1
+                if speech is not None and preferences:
+                    speech.volume = preferences["music_volume"] if music_playing else preferences["volume"]
                 if args.seconds and now - started >= args.seconds:
                     break
                 if speaking and not speech.active(now):
@@ -151,10 +179,23 @@ def run(args):
                         else:
                             clip = clips[position % len(clips)]
                             print("Speaking: " + clip.name, flush=True)
+                            music_playing = None
+                            if preferences:
+                                speech.volume = preferences["volume"]
                             speech.start(clip, now)
                             position += 1
                             speaking = True
                             last_was_silent = False
+                if speech is not None and not speaking and not args.once and preferences:
+                    wanted_music = preferences["music"]
+                    if music_playing and (music_playing != wanted_music or not speech.active(now)):
+                        speech.stop()
+                        music_playing = None
+                    if wanted_music and not music_playing:
+                        speech.volume = preferences["music_volume"]
+                        speech.start(CHATTER / "ambient" / wanted_music, now)
+                        music_playing = wanted_music
+                        print("Background music: " + wanted_music, flush=True)
                 if speaking and motion.finished(now):
                     target = gesture(configs, rng)
                     motion.move(target, now, rng.uniform(1.5, 3.0))
@@ -192,6 +233,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--preferences", type=Path, help="Dashboard settings JSON, reloaded while running")
     parser.add_argument("--dry-run", action="store_true", help="Simulate speech and poses without GPIO or audio devices")
     parser.add_argument("--action", type=str.lower, choices=NAMES, help="Perform one silent expression and exit (yes, no, look, happy)")
     parser.add_argument("--no-voice", action="store_true", help="Run only silent head expressions; never open audio or jaw devices")
@@ -213,7 +255,8 @@ def main():
         value = getattr(args, name)
         if not math.isfinite(value) or value < 0 or (name == "speed" and value == 0):
             parser.error(name + " must be finite and " + ("positive" if name == "speed" else "nonnegative"))
-    run(args)
+    with hardware_lock(args.dry_run):
+        run(args)
 
 
 if __name__ == "__main__":

@@ -62,6 +62,22 @@ def check_clip(path):
             raise ValueError("Empty recording: " + str(path))
 
 
+def gain_pcm(data, volume):
+    """Apply software volume after calculating jaw movement from original audio."""
+    if volume == 100:
+        return data
+    samples = array("h")
+    samples.frombytes(data)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    gain = max(0, min(100, volume)) / 100
+    for i, value in enumerate(samples):
+        samples[i] = round(value * gain)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    return samples.tobytes()
+
+
 class Speech:
     def __init__(self, options, mouth, dry_run=False, audio_debug=False):
         self.options, self.mouth, self.dry_run = options, mouth, dry_run
@@ -69,6 +85,7 @@ class Speech:
         self.stream = self.source = self.audio = None
         self.error = None
         self.ends = 0.0
+        self.volume = 100
         if not dry_run:
             import pyaudio
             self.api = pyaudio
@@ -88,6 +105,7 @@ class Speech:
             try:
                 data = self.source.readframes(frame_count)
                 data, self.jaw = process_chunk(data, channels, self.options, self.mouth["range"])
+                data = gain_pcm(data, self.volume)
                 complete = len(data) < frame_count * channels * 2
                 return data, self.api.paComplete if complete else self.api.paContinue
             except Exception as exc:
