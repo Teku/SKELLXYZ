@@ -31,6 +31,29 @@ class DashboardTests(unittest.TestCase):
         Camera._finish_stop(process)
         process.kill.assert_called_once()
 
+    def test_camera_countdown_starts_and_cancels_on_server(self):
+        camera = Camera()
+        camera.url_path = Path(camera.directory.name) / "source.json"
+        try:
+            with patch("skeleton_dashboard.threading.Timer") as timer, patch("skeleton_dashboard.subprocess.Popen") as spawn:
+                camera.start({"url": "rtsp://camera/live"})
+                self.assertTrue(camera.status()["scheduled"])
+                self.assertEqual(timer.call_args.args[0], 90)
+                spawn.assert_not_called()
+                callback = timer.call_args.args[1]
+                camera.stop()
+                callback()
+                spawn.assert_not_called()
+                self.assertFalse(camera.status()["scheduled"])
+                camera.start({"url": "rtsp://camera/live"})
+                callback = timer.call_args.args[1]
+                with patch.object(camera, "start") as start:
+                    callback()
+                    self.assertEqual(start.call_args.args[0]["delay"], 0)
+                    self.assertFalse(camera.status()["scheduled"])
+        finally:
+            camera.close()
+
     def test_camera_worker_validation_and_private_url(self):
         camera = Camera()
         camera.url_path = Path(camera.directory.name) / "source.json"
@@ -41,7 +64,7 @@ class DashboardTests(unittest.TestCase):
             process.poll.return_value = None
             with patch("skeleton_dashboard.subprocess.Popen", return_value=process) as spawn, patch("skeleton_dashboard.threading.Thread"):
                 url = "rtsp://user:secret@camera/live"
-                camera.start({"url": url, "detector": "face", "seconds": 30})
+                camera.start({"url": url, "detector": "face", "seconds": 30, "delay": 0})
                 self.assertNotIn(url, " ".join(spawn.call_args.args[0]))
                 self.assertEqual(spawn.call_args.kwargs["env"]["SKELL_RTSP_URL"], url)
                 self.assertNotIn(url, json.dumps(camera.status()))

@@ -157,3 +157,11 @@ The preview samples up to 2 frames/sec at 320x240 and keeps at most 60 frames
 (the latest 30 seconds at that rate). Frame timing follows actual capture timing.
 The last GIF lasts until the next test or service restart; download it to keep it.
 Missing Pillow leaves the live camera test working and reports installation instructions.
+
+## Delayed camera tests
+
+Start delay defaults to 90 seconds, separate from the 10-second recording duration.
+Press Start camera test before walking to the skeleton. The Pi owns the countdown
+and recording, so closing the page or losing Wi-Fi does not cancel it. Return to
+Camera debug afterward to view/download the GIF. Cancel countdown stops a pending
+test; set delay to 0 for an immediate test. Restarting the service cancels pending tests.

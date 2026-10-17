@@ -10,6 +10,7 @@ import secrets
 from http.cookies import SimpleCookie, CookieError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -29,6 +30,8 @@ ROOT = Path(__file__).resolve().parent
 class Camera:
     def __init__(self, url_path=ROOT / "camera-source.json"):
         self.url_path = Path(url_path)
+        self.pending = None
+        self.start_at = None
         self.lock = threading.RLock()
         self.process = None
         self.logs = deque(maxlen=60)
@@ -39,6 +42,8 @@ class Camera:
     def status(self):
         with self.lock:
             return dict(running=self.process is not None and self.process.poll() is None,
+                        scheduled=self.pending is not None,
+                        starts_in=max(0, math.ceil(self.start_at - time.monotonic())) if self.start_at is not None else 0,
                         logs=list(self.logs), preview=self.snapshot.exists(), gif=self.gif.exists(),
                         configured=self.url_path.exists() or bool(os.environ.get("SKELL_RTSP_URL")))
 
@@ -66,6 +71,8 @@ class Camera:
 
     def start(self, data):
         with self.lock:
+            if self.pending is not None:
+                raise ValueError("Cancel the scheduled camera test first")
             if self.process is not None and self.process.poll() is None:
                 raise ValueError("Stop the current camera test first")
             mode = data.get("detector", "capture")
@@ -74,11 +81,23 @@ class Camera:
             seconds = data.get("seconds", 10)
             if type(seconds) is not int or not 5 <= seconds <= 3600:
                 raise ValueError("Camera duration must be 5–3600 seconds")
+            delay = data.get("delay", 90)
+            if type(delay) is not int or not 0 <= delay <= 600:
+                raise ValueError("Start delay must be 0-600 seconds")
             url = data.get("url") or self.saved_url()
             if not isinstance(url, str) or not url:
                 raise ValueError("Enter the RTSP URL once to save it on the Pi")
             validate_rtsp(url)
             self.save_url(url)
+            if delay:
+                self.logs.clear()
+                self.logs.append("Camera test scheduled in %d seconds" % delay)
+                self.start_at = time.monotonic() + delay
+                timer = threading.Timer(delay, lambda: self._start_scheduled(timer, dict(data, url=url, delay=0)))
+                timer.daemon = True
+                self.pending = timer
+                timer.start()
+                return
             command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp", "--rtsp-debug",
                        "--seconds", str(seconds), "--snapshot-hz", "5", "--snapshot", str(self.snapshot)]
             command += ["--gif", str(self.gif)]
@@ -93,6 +112,16 @@ class Camera:
                                             stderr=subprocess.STDOUT, text=True, bufsize=1)
             threading.Thread(target=self._collect, args=(self.process, url), daemon=True).start()
             threading.Thread(target=self._watch, args=(self.process, seconds), daemon=True).start()
+
+    def _start_scheduled(self, timer, data):
+        with self.lock:
+            if self.pending is not timer:
+                return
+            self.pending = self.start_at = None
+            try:
+                self.start(data)
+            except (ValueError, OSError) as exc:
+                self.logs.append("Scheduled camera test failed: " + str(exc))
 
     def _watch(self, process, seconds):
         started = last_frame = time.monotonic()
@@ -134,6 +163,10 @@ class Camera:
 
     def stop(self):
         with self.lock:
+            if self.pending is not None:
+                self.pending.cancel()
+                self.pending = self.start_at = None
+                self.logs.append("Scheduled camera test cancelled")
             if self.process is not None and self.process.poll() is None:
                 self.process.terminate()
                 threading.Thread(target=self._finish_stop, args=(self.process,), daemon=True).start()
