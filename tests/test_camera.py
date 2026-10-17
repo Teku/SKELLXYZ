@@ -5,7 +5,7 @@ import tempfile
 from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "raspberrypi"))
 from camera_test import Target, deduplicate, load_face_detector
-from camera_source import open_source, validate_rtsp
+from camera_source import open_source, validate_rtsp, redact_diagnostic
 from unittest.mock import patch
 import os
 
@@ -33,6 +33,23 @@ class TrackingTests(unittest.TestCase):
         self.assertEqual(calls[-1], "release")
         with self.assertRaises(ValueError):
             validate_rtsp("https://example.com")
+
+    def test_rtsp_failure_reports_redacted_backend_error(self):
+        url = "rtsp://viewer:secret-value@camera/live"
+        class Capture:
+            def open(self, *args):
+                os.write(2, ("SETUP failed: 461 Unsupported Transport " + url).encode())
+                return False
+            def release(self):
+                pass
+        cv = SimpleNamespace(VideoCapture=Capture, CAP_FFMPEG=1900)
+        with self.assertRaises(RuntimeError) as caught:
+            open_source(cv, "0", url)
+        message = str(caught.exception)
+        self.assertIn("461 Unsupported Transport", message)
+        self.assertNotIn("secret-value", message)
+        self.assertNotIn("viewer", message)
+        self.assertNotIn("s3cret", redact_diagnostic("password s3cret", "rtsp://viewer:s3cret@camera/live"))
 
     def test_legacy_rtsp_uses_two_argument_open(self):
         calls = []

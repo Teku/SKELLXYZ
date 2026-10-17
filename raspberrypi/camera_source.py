@@ -1,7 +1,10 @@
 """Camera source setup; RTSP credentials stay out of application diagnostics."""
 from contextlib import contextmanager
 import os
-from urllib.parse import urlsplit
+import re
+import tempfile
+import base64
+from urllib.parse import urlsplit, unquote
 
 
 def validate_rtsp(url):
@@ -30,6 +33,37 @@ def quiet_native():
         os.close(saved)
 
 
+def redact_diagnostic(text, url):
+    parsed = urlsplit(url)
+    secrets = [url, unquote(url), parsed.username, parsed.password,
+               unquote(parsed.username or ""), unquote(parsed.password or "")]
+    if parsed.username is not None:
+        pair = unquote(parsed.username) + ":" + unquote(parsed.password or "")
+        secrets.append(base64.b64encode(pair.encode()).decode())
+    text = re.sub(r"(?im)^.*(?:authorization|authenticate).*$", "[authentication details redacted]", text)
+    text = re.sub(r"rtsps?://[^\s\"<>]+", "[RTSP source]", text, flags=re.I)
+    for secret in sorted(set(v for v in secrets if v), key=len, reverse=True):
+        text = text.replace(secret, "[redacted]")
+    return text.strip()[-3000:]
+
+
+@contextmanager
+def capture_native(lines, url):
+    saved = os.dup(2)
+    try:
+        with tempfile.TemporaryFile() as sink:
+            os.dup2(sink.fileno(), 2)
+            try:
+                yield
+            finally:
+                os.dup2(saved, 2)
+                sink.seek(0)
+                lines.append(redact_diagnostic(sink.read(65536).decode("utf-8", "replace"), url))
+    finally:
+        os.dup2(saved, 2)
+        os.close(saved)
+
+
 def open_source(cv2, device, rtsp_url=None):
     if rtsp_url is None:
         cap = cv2.VideoCapture(int(device) if device.isdigit() else device, cv2.CAP_V4L2)
@@ -46,8 +80,9 @@ def open_source(cv2, device, rtsp_url=None):
     key = "OPENCV_FFMPEG_CAPTURE_OPTIONS"
     previous = os.environ.get(key)
     os.environ[key] = "rtsp_transport;tcp" if modern else "rtsp_transport;tcp|stimeout;5000000"
+    diagnostic = []
     try:
-        with quiet_native():
+        with capture_native(diagnostic, rtsp_url):
             if modern:
                 ok = cap.open(rtsp_url, cv2.CAP_FFMPEG,
                               [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
@@ -57,10 +92,12 @@ def open_source(cv2, device, rtsp_url=None):
         if not ok:
             raise RuntimeError("RTSP connection failed")
         return cap
-    except Exception:
+    except Exception as exc:
         with quiet_native():
             cap.release()
-        raise RuntimeError("Cannot open RTSP stream. Check address, credentials, network reachability, and OpenCV FFmpeg support.") from None
+        detail = "\n".join(line for line in diagnostic if line)
+        detail = detail or redact_diagnostic(str(exc), rtsp_url)
+        raise RuntimeError("Cannot open RTSP stream. OpenCV/FFmpeg detail: " + (detail or "No backend diagnostic returned")) from None
     finally:
         if previous is None:
             os.environ.pop(key, None)
