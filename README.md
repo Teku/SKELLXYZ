@@ -26,6 +26,12 @@ SKELLXYZ/
 
 ## Boot setup
 
+For the web dashboard and unified controller, use
+`sudo bash install_dashboard_service.sh` from the Pi checkout.
+This replaces the legacy service startup described below with a dashboard that
+starts idle at boot. See [dashboard service setup](docs/dashboard.md#run-at-boot-with-systemd)
+for installation, password setup, logs, and rollback.
+
 On the Pi, `skeleton.service` starts `start_skeleton.sh`, which:
 
 1. Ensures `pigpiod` is running
@@ -193,13 +199,13 @@ The old home-directory copies have been cleared and the service restarted.
 A local web control panel is available in `raspberrypi/skeleton_dashboard.py`.
 It manages a unified runner with status/logs, show and gesture controls, saying
 selection, voice/music volume, and timing. See [dashboard setup](docs/dashboard.md).
-The current boot launcher remains unchanged until the dashboard is tested on the Pi.
+Install its boot service with `sudo bash install_dashboard_service.sh` on the Pi.
 
 The first implementation on `feature/unified-skeleton-controller` coordinates
 recorded talking and smooth head movement in `raspberrypi/skeleton_run.py`.
 See [manual trial instructions](docs/unified-trial.md) and
 [the implementation plan](docs/unified-controller.md).
-The current boot launcher still runs ChatterPi and head animation separately.
+The legacy boot launcher runs ChatterPi and head animation separately until you install the dashboard service.
 Camera tracking and attract scheduling are deferred.
 
 ## Safety

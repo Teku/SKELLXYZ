@@ -1,0 +1,21 @@
+# Installed with substituted user/repo paths by install_dashboard_service.sh.
+[Unit]
+Description=Skeleton dashboard and unified controller
+Requires=pigpiod.service
+After=network.target pigpiod.service skeleton.service
+Conflicts=skeleton.service
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@REPO@
+EnvironmentFile=/etc/skeleton-dashboard.env
+ExecStart=/usr/bin/python3 -u @REPO@/raspberrypi/skeleton_dashboard.py --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=5
+# Signal the dashboard first; it stops its child and waits for servo release.
+KillMode=mixed
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -24,8 +24,8 @@ endpoint is exposed. Empty playlist uses the existing default v01–v10 sequence
 
 ## First run on the Pi
 
-Pull the branch. Stop the old service and its detached screen sessions as in
-`unified-trial.md`, and stop any manually launched controller. Keep pigpiod
+Pull `main`. Stop the old service with `sudo systemctl stop skeleton.service`
+(this also stops its screen sessions on this Pi), and stop any manually launched controller. Keep pigpiod
 running. The new runner uses a Linux file lock to reject a second unified
 runner, and checks for older Python servo/ChatterPi processes at startup.
 Old scripts cannot honor this new lock: do not launch them while the dashboard
@@ -47,10 +47,53 @@ GPIO/audio dependencies. The server starts stopped: click Start show explicitly.
 HTTP is for a trusted LAN only; do not forward this port to the Internet. For
 an encrypted connection, bind the default localhost address and use a KiTTY/SSH
 local tunnel from port 8080 to localhost:8080, then browse http://localhost:8080.
-Passwords are held only in memory in the server and browser tab. API endpoints
+Interactive passwords are held only in memory in the server and browser tab. API endpoints
 require bearer authentication; the unauthenticated page contains no status data.
 For unattended startup supply `SKELL_DASHBOARD_PASSWORD` through a protected
 service environment file. No password is stored in this repository.
+
+## Run at boot with systemd
+
+Stop any manually running dashboard with Ctrl+C, then run on the Pi:
+
+```bash
+cd ~/SKELLXYZ
+git pull
+sudo bash install_dashboard_service.sh
+```
+
+The installer prompts for a password on first installation and saves it in
+`/etc/skeleton-dashboard.env`, readable only by root. Reinstalling preserves it.
+It uses the sudo caller as the service user (normally `fpp`; direct root execution
+also defaults to `fpp`) and the current checkout path. It requires the existing
+`pigpiod.service` and starts that daemon before the dashboard.
+
+The installer disables and stops the old `skeleton.service`, then enables and
+starts `skeleton-dashboard.service`. No separate screen cleanup is needed on
+this Pi. The units conflict so systemd will not run both at once.
+Open `http://RP3:8080` and enter your password. After boot or restart, the dashboard
+starts idle: click **Start show** to begin. Saved settings persist across restarts.
+
+```bash
+systemctl status skeleton-dashboard.service
+journalctl -u skeleton-dashboard.service -n 50 --no-pager
+sudo systemctl restart skeleton-dashboard.service
+sudo systemctl stop skeleton-dashboard.service
+```
+
+Stopping the service asks the dashboard to stop its runner and release the servos.
+Systemd allows 60 seconds for cleanup before forcibly terminating remaining
+processes. An unexpected dashboard failure restarts the dashboard in the idle state.
+For future code updates, run `git pull` and restart the dashboard service. Rerun
+the installer if the service template changes. To change the password, use
+`sudoedit /etc/skeleton-dashboard.env` and restart the service.
+
+To return to the old boot launcher:
+
+```bash
+sudo systemctl disable --now skeleton-dashboard.service
+sudo systemctl enable --now skeleton.service
+```
 
 ## Simulation
 
@@ -64,6 +107,6 @@ graceful on Linux. Windows simulation terminates the child process directly.
 
 Ctrl+C on the dashboard stops its runner and waits for cleanup. Do not force-kill
 the runner: that skips servo release. Timing is cooperative; shutdown can take
-several seconds. The existing boot launcher is unchanged; test the dashboard
-manually before choosing a systemd migration. RTSP monitoring and automatic
+several seconds. The service installer above replaces the old boot startup when
+you run it. RTSP monitoring and automatic
 vision-driven behavior remain separate from this dashboard.
