@@ -44,7 +44,7 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(b"401", request("GET", "/api/status"))
             self.assertIn(b"200", request("POST", "/api/settings", {"volume": 32}, True))
             self.assertEqual(read(controller.preferences)["volume"], 32)
-            self.assertIn(b"Skeleton control room", request("GET", "/"))
+            self.assertIn(b"<h1>Skeleton</h1>", request("GET", "/"))
             self.assertIn(b"400", request("POST", "/api/settings", {"speed": 999}, True))
 
     def test_background_yields_to_speech_without_jaw_motion(self):
