@@ -29,7 +29,7 @@ SKELLXYZ/
 For the web dashboard and unified controller, use
 `sudo bash install_dashboard_service.sh` from the Pi checkout.
 This replaces the legacy service startup described below with a dashboard that
-starts idle at boot. See [dashboard service setup](docs/dashboard.md#run-at-boot-with-systemd)
+starts the show automatically at boot. See [dashboard service setup](docs/dashboard.md#run-at-boot-with-systemd)
 for installation, password setup, logs, and rollback.
 
 On the Pi, `skeleton.service` starts `start_skeleton.sh`, which:

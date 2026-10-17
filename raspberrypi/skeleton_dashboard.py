@@ -161,6 +161,7 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--dry-run", action="store_true", help="Run simulated gestures/audio only")
+    parser.add_argument("--start-stopped", action="store_true", help="Open the dashboard without starting the show")
     args = parser.parse_args()
     password = os.environ.get("SKELL_DASHBOARD_PASSWORD") or getpass.getpass("Dashboard password (8+ characters): ")
     if len(password) < 8 or not password.isascii():
@@ -172,6 +173,12 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     print("Dashboard listening on http://%s:%d (%s)" % (args.host, args.port, "simulation" if args.dry_run else "hardware"), flush=True)
     try:
+        if not args.start_stopped:
+            try:
+                controller.start("show")
+            except (ValueError, OSError) as exc:
+                controller.logs.append("Automatic show startup failed: " + str(exc))
+                print("Automatic show startup failed:", exc, flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass

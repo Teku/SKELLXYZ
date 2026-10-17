@@ -42,7 +42,8 @@ Enter a dashboard password (at least 8 ASCII characters). Open
 `http://RP3:8080` from a browser on the same network and sign in as `admin` with that password.
 If RP3 does not resolve, use the Pi's address, not the RTSP camera's address.
 The web server uses Python's standard library; the runner uses its existing
-GPIO/audio dependencies. The server starts stopped: click Start show explicitly.
+GPIO/audio dependencies. The show starts automatically using saved settings. Use `--start-stopped` to open
+the dashboard without starting the show.
 
 HTTP is for a trusted LAN only; do not forward this port to the Internet. For
 an encrypted connection, bind the default localhost address and use a KiTTY/SSH
@@ -73,7 +74,7 @@ starts `skeleton-dashboard.service`. No separate screen cleanup is needed on
 this Pi. The units conflict so systemd will not run both at once.
 Open `http://RP3:8080` and sign in as `admin` with your password. The login form
 includes username/password autocomplete fields for password managers such as LastPass. After boot or restart, the dashboard
-starts idle: click **Start show** to begin. Saved settings persist across restarts.
+starts the show automatically using saved settings. Saved settings persist across restarts.
 
 ```bash
 systemctl status skeleton-dashboard.service
@@ -84,7 +85,7 @@ sudo systemctl stop skeleton-dashboard.service
 
 Stopping the service asks the dashboard to stop its runner and release the servos.
 Systemd allows 60 seconds for cleanup before forcibly terminating remaining
-processes. An unexpected dashboard failure restarts the dashboard in the idle state.
+processes. An unexpected dashboard failure restarts the dashboard and starts the show again.
 For future code updates, run `git pull` and restart the dashboard service. Rerun
 the installer if the service template changes. To change the password, use
 `sudoedit /etc/skeleton-dashboard.env` and restart the service.
@@ -99,7 +100,7 @@ sudo systemctl enable --now skeleton.service
 ## Simulation
 
 ```bash
-python3 raspberrypi/skeleton_dashboard.py --dry-run
+python3 raspberrypi/skeleton_dashboard.py --dry-run --start-stopped
 ```
 
 Open http://localhost:8080 on the same computer. The page displays Simulation.

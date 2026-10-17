@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "raspberrypi"))
 from skeleton_preferences import validate, read, save
 from skeleton_speech import gain_pcm
-from skeleton_dashboard import Controller
+from skeleton_dashboard import Controller, main
 from skeleton_dashboard import handler_for
 from http.server import ThreadingHTTPServer
 import threading
@@ -22,6 +22,18 @@ from skeleton_run import run
 
 
 class DashboardTests(unittest.TestCase):
+    def test_startup_runs_show_unless_start_stopped(self):
+        for flags, should_start in (([], True), (["--start-stopped"], False)):
+            with self.subTest(flags=flags), patch("sys.argv", ["dashboard", *flags]), patch.dict("os.environ", {"SKELL_DASHBOARD_PASSWORD": "test-password"}), patch("skeleton_dashboard.Controller") as factory, patch("skeleton_dashboard.ThreadingHTTPServer") as server, patch("skeleton_dashboard.signal.signal"), redirect_stdout(io.StringIO()):
+                factory.return_value.process = None
+                main()
+                if should_start:
+                    factory.return_value.start.assert_called_once_with("show")
+                else:
+                    factory.return_value.start.assert_not_called()
+                factory.return_value.stop.assert_called_once()
+                server.return_value.server_close.assert_called_once()
+
     def test_http_requires_password_and_validates_settings(self):
         class Connection:
             def __init__(self, request):

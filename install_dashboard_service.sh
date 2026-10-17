@@ -56,5 +56,5 @@ systemctl start pigpiod.service
 systemctl enable skeleton-dashboard.service
 systemctl restart skeleton-dashboard.service
 echo "Dashboard installed: http://$(hostname):8080"
-echo "Starts idle. Use Start show in the dashboard to begin."
+echo "The show starts automatically. Use Stop in the dashboard to pause it."
 systemctl --no-pager --full status skeleton-dashboard.service
