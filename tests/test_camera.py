@@ -54,6 +54,27 @@ class TrackingTests(unittest.TestCase):
         self.assertNotIn("viewer", message)
         self.assertNotIn("s3cret", redact_diagnostic("password s3cret", "rtsp://viewer:s3cret@camera/live"))
 
+    def test_gif_preview_encodes_timing_and_bounds_memory(self):
+        from PIL import Image
+        from camera_gif import GifPreview
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "preview.gif"
+            gif = GifPreview(path)
+            for now, color in ((0, "red"), (0.1, "green"), (0.7, "blue")):
+                with patch.object(Image, "fromarray", return_value=Image.new("RGB", (480, 360), color)):
+                    gif.add(None, now)
+            self.assertEqual(len(gif.frames), 2)
+            self.assertTrue(gif.save())
+            with Image.open(path) as saved:
+                self.assertEqual(saved.n_frames, 2)
+                self.assertEqual(saved.size, (320, 240))
+                self.assertEqual(saved.info["duration"], 700)
+                self.assertEqual(saved.info["loop"], 0)
+            with patch.object(Image, "fromarray", return_value=Image.new("RGB", (480, 360))):
+                for i in range(100):
+                    gif.add(None, i + 1)
+            self.assertEqual(len(gif.frames), 60)
+
     def test_legacy_rtsp_uses_two_argument_open(self):
         calls = []
         class Capture:

@@ -147,3 +147,13 @@ Older OpenCV builds use the legacy FFmpeg RTSP open call. The dashboard also
 watches the camera worker: 30 seconds without a new preview ends a stalled test.
 Stop allows 10 seconds for the camera to exit before terminating it. These
 limits apply only to the camera process, never the servo controller.
+
+## Animated preview
+
+Install Pillow once on the Pi: `sudo apt-get install python3-pil`.
+Camera tests then create an annotated GIF automatically when they finish or are
+stopped normally. The Camera debug page shows it with a Download GIF link.
+The preview samples up to 2 frames/sec at 320x240 and keeps at most 60 frames
+(the latest 30 seconds at that rate). Frame timing follows actual capture timing.
+The last GIF lasts until the next test or service restart; download it to keep it.
+Missing Pillow leaves the live camera test working and reports installation instructions.

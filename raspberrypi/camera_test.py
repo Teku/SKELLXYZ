@@ -84,6 +84,7 @@ def main():
     parser.add_argument("--detect-hz", type=float, default=2, help="Requested detection rate; actual speed is measured")
     parser.add_argument("--dark-threshold", type=float, default=25, help="Experimental mean grayscale cutoff (0..255, not lux)")
     parser.add_argument("--snapshot-hz", type=float, default=1, help="Maximum JPEG preview rate (1-10 Hz)")
+    parser.add_argument("--gif", type=Path, help="Save an animated annotated preview (requires python3-pil)")
     args = parser.parse_args()
     if not math.isfinite(args.snapshot_hz) or not 1 <= args.snapshot_hz <= 10:
         parser.error("snapshot-hz must be in [1, 10]")
@@ -107,6 +108,14 @@ def main():
             validate_rtsp(rtsp_url)
         except ValueError as exc:
             parser.error(str(exc))
+    gif = None
+    if args.gif:
+        try:
+            from camera_gif import GifPreview
+            gif = GifPreview(args.gif)
+            args.gif.parent.mkdir(parents=True, exist_ok=True)
+        except ImportError:
+            print("GIF unavailable: install python3-pil on the Pi", flush=True)
     cap = open_source(cv2, args.device, rtsp_url, debug=args.rtsp_debug)
     stopping = False
     previous = {}
@@ -173,6 +182,8 @@ def main():
             if point:
                 cv2.circle(frame, tuple(int(v) for v in point), 6, (0, 0, 255), -1)
             cv2.putText(frame, "%s %s light=%.0f" % (args.detector, state, brightness), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            if gif is not None:
+                gif.add(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), time.monotonic())
             if now - last_report >= 1:
                 target = "none" if point is None else "x=%.2f y=%.2f" % (point[0] / 240 - 1, point[1] / 180 - 1)
                 print("%s %s=%d target=%s light=%.1f detector=%.0fms" % (state, "faces" if args.detector == "face" else "people", len(boxes), target, brightness, detector_ms), flush=True)
@@ -187,6 +198,8 @@ def main():
                 cv2.imshow("Skeleton camera test - q to quit", frame)
                 if cv2.waitKey(1) & 0xff == ord("q"):
                     break
+        if gif is not None and gif.save():
+            print("Animated GIF preview ready", flush=True)
         elapsed = max(0.001, time.monotonic() - started)
         print("Finished: %.1f capture fps, %.2f detections/sec; no servos controlled." % (frames / elapsed, detections / elapsed))
     finally:

@@ -34,11 +34,12 @@ class Camera:
         self.logs = deque(maxlen=60)
         self.directory = tempfile.TemporaryDirectory(prefix="skell-camera-")
         self.snapshot = Path(self.directory.name) / "preview.jpg"
+        self.gif = Path(self.directory.name) / "preview.gif"
 
     def status(self):
         with self.lock:
             return dict(running=self.process is not None and self.process.poll() is None,
-                        logs=list(self.logs), preview=self.snapshot.exists(),
+                        logs=list(self.logs), preview=self.snapshot.exists(), gif=self.gif.exists(),
                         configured=self.url_path.exists() or bool(os.environ.get("SKELL_RTSP_URL")))
 
     def saved_url(self):
@@ -80,6 +81,9 @@ class Camera:
             self.save_url(url)
             command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp", "--rtsp-debug",
                        "--seconds", str(seconds), "--snapshot-hz", "5", "--snapshot", str(self.snapshot)]
+            command += ["--gif", str(self.gif)]
+            if self.gif.exists():
+                self.gif.unlink()
             command += ["--capture-only"] if mode == "capture" else ["--detector", mode]
             env = dict(os.environ, SKELL_RTSP_URL=url)
             if self.snapshot.exists():
@@ -274,12 +278,13 @@ def handler_for(controller, password, camera=None):
                     self.send(200, status)
                 except (ValueError, OSError) as exc:
                     self.send(500, {"error": str(exc)})
-            elif self.path == "/api/camera/preview" and camera is not None:
+            elif self.path in ("/api/camera/preview", "/api/camera/gif") and camera is not None:
                 if not self.authorized():
                     self.send(401, {"error": "Sign in first"})
                     return
                 try:
-                    self.send(200, camera.snapshot.read_bytes(), "image/jpeg")
+                    is_gif = self.path.endswith("/gif")
+                    self.send(200, (camera.gif if is_gif else camera.snapshot).read_bytes(), "image/gif" if is_gif else "image/jpeg")
                 except FileNotFoundError:
                     self.send(404, {"error": "Waiting for a camera frame"})
             else:
