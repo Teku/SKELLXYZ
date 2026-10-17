@@ -39,7 +39,7 @@ python3 raspberrypi/skeleton_dashboard.py --host 0.0.0.0 --port 8080
 ```
 
 Enter a dashboard password (at least 8 ASCII characters). Open
-`http://RP3:8080` from a browser on the same network and enter that password.
+`http://RP3:8080` from a browser on the same network and sign in as `admin` with that password.
 If RP3 does not resolve, use the Pi's address, not the RTSP camera's address.
 The web server uses Python's standard library; the runner uses its existing
 GPIO/audio dependencies. The server starts stopped: click Start show explicitly.
@@ -48,7 +48,7 @@ HTTP is for a trusted LAN only; do not forward this port to the Internet. For
 an encrypted connection, bind the default localhost address and use a KiTTY/SSH
 local tunnel from port 8080 to localhost:8080, then browse http://localhost:8080.
 Interactive passwords are held only in memory in the server and browser tab. API endpoints
-require bearer authentication; the unauthenticated page contains no status data.
+require HTTP Basic authentication with username `admin`; the unauthenticated page contains no status data.
 For unattended startup supply `SKELL_DASHBOARD_PASSWORD` through a protected
 service environment file. No password is stored in this repository.
 
@@ -71,7 +71,8 @@ also defaults to `fpp`) and the current checkout path. It requires the existing
 The installer disables and stops the old `skeleton.service`, then enables and
 starts `skeleton-dashboard.service`. No separate screen cleanup is needed on
 this Pi. The units conflict so systemd will not run both at once.
-Open `http://RP3:8080` and enter your password. After boot or restart, the dashboard
+Open `http://RP3:8080` and sign in as `admin` with your password. The login form
+includes username/password autocomplete fields for password managers such as LastPass. After boot or restart, the dashboard
 starts idle: click **Start show** to begin. Saved settings persist across restarts.
 
 ```bash

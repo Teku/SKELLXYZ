@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """LAN dashboard for one managed skeleton runner. No third-party web packages."""
 import argparse
+import base64
 from collections import deque
 import getpass
 import hmac
@@ -107,14 +108,15 @@ def handler_for(controller, password):
 
         def authorized(self):
             supplied = self.headers.get("Authorization", "")
-            return hmac.compare_digest(supplied.encode(), ("Bearer " + password).encode())
+            expected = b"Basic " + base64.b64encode(("admin:" + password).encode("ascii"))
+            return hmac.compare_digest(supplied.encode(), expected)
 
         def do_GET(self):
             if self.path == "/":
                 self.send(200, (ROOT / "dashboard.html").read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/api/status":
                 if not self.authorized():
-                    self.send(401, {"error": "Enter the dashboard password"})
+                    self.send(401, {"error": "Enter username admin and the dashboard password"})
                     return
                 try:
                     self.send(200, controller.status())
@@ -125,9 +127,9 @@ def handler_for(controller, password):
 
         def do_POST(self):
             if not self.authorized():
-                self.send(401, {"error": "Enter the dashboard password"})
+                self.send(401, {"error": "Enter username admin and the dashboard password"})
                 return
-            # No CORS support; cross-origin form requests cannot supply bearer auth.
+            # No CORS support; cross-origin form requests cannot supply the Authorization header.
             if self.headers.get("Content-Type") != "application/json":
                 self.send(415, {"error": "JSON required"})
                 return

@@ -14,6 +14,7 @@ import threading
 import urllib.request
 import urllib.error
 import json
+import base64
 from types import SimpleNamespace
 import io
 from contextlib import redirect_stdout
@@ -33,15 +34,18 @@ class DashboardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             controller = Controller(True, Path(directory) / "settings.json")
             handler = handler_for(controller, "test-password")
-            def request(method, path, data=None, authorized=False):
+            def request(method, path, data=None, authorized=False, username="admin", password="test-password"):
                 body = json.dumps(data).encode() if data is not None else b""
                 headers = f"{method} {path} HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\n"
                 if authorized:
-                    headers += "Authorization: Bearer test-password\r\n"
+                    token = base64.b64encode(f"{username}:{password}".encode()).decode()
+                    headers += f"Authorization: Basic {token}\r\n"
                 connection = Connection(headers.encode() + b"\r\n" + body)
                 handler(connection, ("127.0.0.1", 1), None)
                 return bytes(connection.output)
             self.assertIn(b"401", request("GET", "/api/status"))
+            self.assertIn(b"401", request("GET", "/api/status", authorized=True, username="other"))
+            self.assertIn(b"401", request("GET", "/api/status", authorized=True, password="wrong"))
             self.assertIn(b"200", request("POST", "/api/settings", {"volume": 32}, True))
             self.assertEqual(read(controller.preferences)["volume"], 32)
             self.assertIn(b"<h1>Skeleton</h1>", request("GET", "/"))
