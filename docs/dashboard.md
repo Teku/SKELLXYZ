@@ -174,3 +174,26 @@ Cancel/Stop ends the sequence without the ending gesture or automatic resume.
 The home Stop button also cancels camera tests. Existing servo calibration and
 movement restrictions apply to both signals. Camera tracking itself does not
 steer the head. No extra servo controller runs alongside the show.
+
+## Head-following trial
+
+Choose Full body or Face and enable **Follow detected person with head**.
+Following is off by default. The existing countdown and yes/no signals still
+apply. A separate servo worker runs at 50 Hz while camera detection runs at its
+own speed; the show remains paused until tracking has returned to rest and
+released the servos. The jaw is not driven during tracking.
+
+The first version maps image position to Base/Pitch angles relative to rest,
+using the inner 35% of the existing calibrated range, a center deadband, quintic
+smooth movement and a 10 degrees/sec peak speed limit. Tilt stays at rest.
+Both trajectory generation and output enforce servo_limits.cfg; no limits change.
+It follows only one detected target. Low light, multiple detections, invalid
+coordinates, or coordinates older than two seconds cause a smooth return to
+rest and PWM release. Stop also returns home and releases PWM.
+
+This mapping assumes a fixed camera aimed in the same direction as the resting
+head. Reverse left/right or up/down if either axis moves the wrong way. A camera
+mounted on the moving head needs a different feedback mapping. Test direction
+in adequate light before relying on following; false face detections remain
+possible. This is a timed diagnostic trial, not automatic vision-triggered speech
+or the final attract-mode behavior.

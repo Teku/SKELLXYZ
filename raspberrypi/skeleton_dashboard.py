@@ -30,6 +30,8 @@ ROOT = Path(__file__).resolve().parent
 class Camera:
     def __init__(self, url_path=ROOT / "camera-source.json", controller=None):
         self.controller = controller
+        self.follow = False
+        self.follow_options = []
         self.active = False
         self.cancelled = threading.Event()
         self.worker = None
@@ -42,6 +44,7 @@ class Camera:
         self.directory = tempfile.TemporaryDirectory(prefix="skell-camera-")
         self.snapshot = Path(self.directory.name) / "preview.jpg"
         self.gif = Path(self.directory.name) / "preview.gif"
+        self.target_file = Path(self.directory.name) / "target.json"
 
     def status(self):
         with self.lock:
@@ -84,6 +87,11 @@ class Camera:
             mode = data.get("detector", "capture")
             if mode not in ("capture", "person", "face"):
                 raise ValueError("Choose capture, person or face")
+            for key in ("follow", "reverse_x", "reverse_y"):
+                if key in data and type(data[key]) is not bool:
+                    raise ValueError("Tracking options must be true or false")
+            if data.get("follow") and mode == "capture":
+                raise ValueError("Choose Full body or Face to follow a person")
             seconds = data.get("seconds", 10)
             if type(seconds) is not int or not 5 <= seconds <= 3600:
                 raise ValueError("Camera duration must be 5–3600 seconds")
@@ -104,9 +112,13 @@ class Camera:
                 self.pending = timer
                 timer.start()
                 return
+            self.follow = data.get("follow", False)
+            self.follow_options = [flag for key, flag in (("reverse_x", "--reverse-x"), ("reverse_y", "--reverse-y")) if data.get(key)]
+            if self.target_file.exists():
+                self.target_file.unlink()
             command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp", "--rtsp-debug",
                        "--seconds", str(seconds), "--snapshot-hz", "5", "--snapshot", str(self.snapshot)]
-            command += ["--gif", str(self.gif)]
+            command += ["--gif", str(self.gif), "--target-file", str(self.target_file)]
             if self.gif.exists():
                 self.gif.unlink()
             command += ["--capture-only"] if mode == "capture" else ["--detector", mode]
@@ -132,6 +144,7 @@ class Camera:
         controller = self.controller
         resume = None
         reserved = False
+        follower = None
         try:
             with controller.lock:
                 if self.cancelled.is_set():
@@ -147,6 +160,12 @@ class Camera:
                 previous.wait(timeout=45)
             if not self._cue("yes"):
                 return
+            if self.follow:
+                with controller.lock:
+                    if self.cancelled.is_set():
+                        return
+                    controller.start("follow", camera_owned=True, target_file=self.target_file, follow_options=self.follow_options)
+                    follower = controller.process
             with self.lock:
                 if self.cancelled.is_set():
                     return
@@ -154,6 +173,10 @@ class Camera:
                 self._launch(command, env, url, seconds)
                 process = self.process
             code = process.wait()
+            if follower is not None:
+                controller.stop()
+                follower.wait(timeout=45)
+                follower = None
             if code == 0 and not self.cancelled.is_set():
                 self._cue("no")
         except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
@@ -161,6 +184,9 @@ class Camera:
             with self.lock:
                 self.logs.append("Camera motion sequence failed: " + str(exc))
         finally:
+            if follower is not None:
+                controller.stop()
+                follower.wait()  # Servo cleanup must finish before resuming the show.
             if reserved:
                 with controller.lock:
                     controller.camera_owned = False
@@ -280,13 +306,13 @@ class Controller:
                         simulation=self.dry_run, logs=list(self.logs),
                         settings=read(self.preferences), catalog=catalog())
 
-    def start(self, mode="show", clip=None, camera_owned=False):
+    def start(self, mode="show", clip=None, camera_owned=False, target_file=None, follow_options=()):
         with self.lock:
             if self.camera_owned and not camera_owned:
                 raise ValueError("Wait for the camera test and head signals to finish")
             if self.process is not None and self.process.poll() is None:
                 raise ValueError("Stop the current run and wait for it to finish first")
-            if mode not in ("show", "head", "say", *NAMES):
+            if mode not in ("show", "head", "say", *NAMES) and not (mode == "follow" and camera_owned and target_file):
                 raise ValueError("Unknown run mode")
             if mode == "say" and clip not in catalog()["clips"]:
                 raise ValueError("Choose a recording")
@@ -300,6 +326,10 @@ class Controller:
                 command += ["--action", mode]
             elif mode == "say":
                 command += ["--clip", str(ROOT / "vendor/ChatterPi/src/vocals" / clip), "--once"]
+            if mode == "follow":
+                command = [sys.executable, "-u", str(ROOT / "head_follow.py"), str(target_file), *follow_options]
+                if self.dry_run:
+                    command.append("--dry-run")
             self.process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE,
                                             stderr=subprocess.STDOUT, text=True, bufsize=1)
             self.mode, self.activity, self.stopping = mode, "Starting", False

@@ -4,6 +4,7 @@ import argparse
 import getpass
 from camera_source import open_source, read_source, validate_rtsp, quiet_native
 import math
+import json
 import os
 from pathlib import Path
 import signal
@@ -85,6 +86,7 @@ def main():
     parser.add_argument("--dark-threshold", type=float, default=25, help="Experimental mean grayscale cutoff (0..255, not lux)")
     parser.add_argument("--snapshot-hz", type=float, default=1, help="Maximum JPEG preview rate (1-10 Hz)")
     parser.add_argument("--gif", type=Path, help="Save an animated annotated preview (requires python3-pil)")
+    parser.add_argument("--target-file", type=Path, help="Publish fresh single-target coordinates for head following")
     args = parser.parse_args()
     if not math.isfinite(args.snapshot_hz) or not 1 <= args.snapshot_hz <= 10:
         parser.error("snapshot-hz must be in [1, 10]")
@@ -173,6 +175,13 @@ def main():
                     boxes = deduplicate([tuple(int(v) for v in b) for b in found])
                     point = tracker.update(boxes, time.monotonic())
                     detections += 1
+                if args.target_file:
+                    target = {"time": time.time(), "x": None, "y": None}
+                    if point is not None and len(boxes) == 1 and not dark:
+                        target.update(x=point[0] / 240 - 1, y=point[1] / 180 - 1)
+                    temporary = args.target_file.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(target))
+                    os.replace(temporary, args.target_file)
                 next_detect = time.monotonic() + 1 / args.detect_hz
             if dark:
                 boxes, point = [], None

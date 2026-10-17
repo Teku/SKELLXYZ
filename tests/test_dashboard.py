@@ -32,7 +32,7 @@ class DashboardTests(unittest.TestCase):
         process.kill.assert_called_once()
 
     def test_camera_signals_surround_capture_and_resume_show(self):
-        for cancel in (False, True):
+        for cancel, follow in ((False, False), (True, False), (False, True)):
             events = []
             controller = MagicMock()
             controller.lock = threading.RLock()
@@ -44,6 +44,7 @@ class DashboardTests(unittest.TestCase):
             controller.stop.side_effect = lambda: events.append("stop")
             camera = Camera(controller=controller)
             camera.active = True
+            camera.follow = follow
             def start(action, **kwargs):
                 events.append(action)
                 process = MagicMock()
@@ -60,7 +61,8 @@ class DashboardTests(unittest.TestCase):
                 with patch.object(camera, "_launch", side_effect=launch):
                     camera._motion_test([], {}, "rtsp://camera/live", 10)
                 self.assertEqual(events, ["stop", "released", "yes"] if cancel else
-                                 ["stop", "released", "yes", "capture", "no", "show"])
+                                 (["stop", "released", "yes", "follow", "capture", "stop", "no", "show"] if follow else
+                                  ["stop", "released", "yes", "capture", "no", "show"]))
                 self.assertFalse(camera.active)
                 self.assertFalse(controller.camera_owned)
             finally:

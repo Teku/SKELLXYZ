@@ -75,6 +75,25 @@ class TrackingTests(unittest.TestCase):
                     gif.add(None, i + 1)
             self.assertEqual(len(gif.frames), 60)
 
+    def test_head_follow_limits_stale_target_and_direction(self):
+        from head_follow import target_pose
+        from servo_config import get_servo_configs
+        configs = get_servo_configs()
+        rest = {n: configs[n]["rest"] for n in ("Base", "Pitch", "Tilt")}
+        for data in ({}, {"time": 1, "x": 0, "y": 0}, {"time": 10, "x": None, "y": None}, {"time": 10, "x": float("nan"), "y": 0}):
+            self.assertEqual(target_pose(configs, data, 10), (rest, False))
+        data = {"time": 10, "x": 100, "y": -100}
+        pose, valid = target_pose(configs, data, 10)
+        self.assertTrue(valid)
+        for name in rest:
+            low, high = configs[name]["range"]
+            self.assertGreaterEqual(pose[name], rest[name] + (low - rest[name]) * .35)
+            self.assertLessEqual(pose[name], rest[name] + (high - rest[name]) * .35)
+        self.assertEqual(pose["Tilt"], rest["Tilt"])
+        reversed_pose, _ = target_pose(configs, data, 10, True, True)
+        self.assertLess(reversed_pose["Base"], rest["Base"])
+        self.assertLess(reversed_pose["Pitch"], rest["Pitch"])
+
     def test_legacy_rtsp_uses_two_argument_open(self):
         calls = []
         class Capture:
