@@ -65,7 +65,10 @@ class DashboardTests(unittest.TestCase):
                 self.output.extend(data)
         with tempfile.TemporaryDirectory() as directory:
             controller = Controller(True, Path(directory) / "settings.json")
-            handler = handler_for(controller, "test-password")
+            snapshot = Path(directory) / "frame.jpg"
+            snapshot.write_bytes(b"test-jpeg")
+            camera = SimpleNamespace(snapshot=snapshot, status=lambda: {"running": True})
+            handler = handler_for(controller, "test-password", camera)
             def request(method, path, data=None, authorized=False, username="admin", password="test-password"):
                 body = json.dumps(data).encode() if data is not None else b""
                 headers = f"{method} {path} HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\n"
@@ -76,6 +79,11 @@ class DashboardTests(unittest.TestCase):
                 handler(connection, ("127.0.0.1", 1), None)
                 return bytes(connection.output)
             self.assertIn(b"401", request("GET", "/api/status"))
+            self.assertIn(b"Camera debug", request("GET", "/camera"))
+            for endpoint in ("/api/camera/status", "/api/camera/preview"):
+                self.assertIn(b"401", request("GET", endpoint))
+                self.assertIn(b"200", request("GET", endpoint, authorized=True))
+            self.assertIn(b"test-jpeg", request("GET", "/api/camera/preview", authorized=True))
             self.assertIn(b"401", request("GET", "/api/status", authorized=True, username="other"))
             self.assertIn(b"401", request("GET", "/api/status", authorized=True, password="wrong"))
             self.assertIn(b"200", request("POST", "/api/settings", {"volume": 32}, True))

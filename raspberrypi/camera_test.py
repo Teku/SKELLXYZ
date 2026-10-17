@@ -79,10 +79,13 @@ def main():
     parser.add_argument("--detector", choices=("person", "face"), default="person", help="Full-body person detector or close-up frontal faces")
     parser.add_argument("--face-cascade", type=Path, help="Optional face cascade XML path")
     parser.add_argument("--capture-only", action="store_true", help="Check camera/light without person detection")
-    parser.add_argument("--snapshot", type=Path, help="Overwrite this annotated JPEG once per second")
+    parser.add_argument("--snapshot", type=Path, help="Write an annotated JPEG at --snapshot-hz")
     parser.add_argument("--detect-hz", type=float, default=2, help="Requested detection rate; actual speed is measured")
     parser.add_argument("--dark-threshold", type=float, default=25, help="Experimental mean grayscale cutoff (0..255, not lux)")
+    parser.add_argument("--snapshot-hz", type=float, default=1, help="Maximum JPEG preview rate (1-10 Hz)")
     args = parser.parse_args()
+    if not math.isfinite(args.snapshot_hz) or not 1 <= args.snapshot_hz <= 10:
+        parser.error("snapshot-hz must be in [1, 10]")
     if not math.isfinite(args.seconds) or args.seconds <= 0:
         parser.error("seconds must be positive and finite")
     if not math.isfinite(args.detect_hz) or not 0 < args.detect_hz <= 15:
@@ -126,6 +129,7 @@ def main():
             args.snapshot.parent.mkdir(parents=True, exist_ok=True)
         tracker = Target()
         started = last_report = time.monotonic()
+        next_snapshot = started
         next_detect = started
         boxes, point = [], None
         frames, detections, detector_ms = 0, 0, 0.0
@@ -171,12 +175,13 @@ def main():
             if now - last_report >= 1:
                 target = "none" if point is None else "x=%.2f y=%.2f" % (point[0] / 240 - 1, point[1] / 180 - 1)
                 print("%s %s=%d target=%s light=%.1f detector=%.0fms" % (state, "faces" if args.detector == "face" else "people", len(boxes), target, brightness, detector_ms), flush=True)
-                if args.snapshot:
-                    temporary = args.snapshot.with_name(args.snapshot.stem + ".tmp" + args.snapshot.suffix)
-                    if not cv2.imwrite(str(temporary), frame):
-                        raise RuntimeError("Cannot write camera snapshot")
-                    os.replace(temporary, args.snapshot)
                 last_report = now
+            if args.snapshot and now >= next_snapshot:
+                temporary = args.snapshot.with_name(args.snapshot.stem + ".tmp" + args.snapshot.suffix)
+                if not cv2.imwrite(str(temporary), frame):
+                    raise RuntimeError("Cannot write camera snapshot")
+                os.replace(temporary, args.snapshot)
+                next_snapshot = time.monotonic() + 1 / args.snapshot_hz
             if args.preview:
                 cv2.imshow("Skeleton camera test - q to quit", frame)
                 if cv2.waitKey(1) & 0xff == ord("q"):

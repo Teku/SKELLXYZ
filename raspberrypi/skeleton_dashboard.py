@@ -52,7 +52,7 @@ class Camera:
                 raise ValueError("Enter the RTSP URL or configure SKELL_RTSP_URL")
             validate_rtsp(url)
             command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp",
-                       "--seconds", str(seconds), "--snapshot", str(self.snapshot)]
+                       "--seconds", str(seconds), "--snapshot-hz", "5", "--snapshot", str(self.snapshot)]
             command += ["--capture-only"] if mode == "capture" else ["--detector", mode]
             env = dict(os.environ, SKELL_RTSP_URL=url)
             if self.snapshot.exists():
@@ -180,6 +180,13 @@ def handler_for(controller, password, camera=None):
         def do_GET(self):
             if self.path == "/":
                 self.send(200, (ROOT / "dashboard.html").read_bytes(), "text/html; charset=utf-8")
+            elif self.path == "/camera":
+                self.send(200, (ROOT / "camera.html").read_bytes(), "text/html; charset=utf-8")
+            elif self.path == "/api/camera/status" and camera is not None:
+                if not self.authorized():
+                    self.send(401, {"error": "Sign in first"})
+                    return
+                self.send(200, camera.status())
             elif self.path == "/api/status":
                 if not self.authorized():
                     self.send(401, {"error": "Enter username admin and the dashboard password"})

@@ -114,9 +114,12 @@ you run it. RTSP diagnostics are available below; automatic vision-driven behavi
 
 ## RTSP camera test
 
-Use Camera test after signing in. Enter the RTSP URL, select Capture only,
-Full body, or Face, and a duration (5-3600 seconds). The panel shows annotated
-snapshots and tracking/light/timing logs. The last frame remains after the test
+Open **Camera debug** in the navigation, or visit `/camera`, and sign in. Enter the RTSP URL, select Capture only,
+Full body, or Face, and a duration (5-3600 seconds). The camera page shows a continuously updating annotated image feed and
+tracking/light/timing logs. It requests JPEG frames up to five times per second;
+actual rate depends on camera capture and detector speed on the Pi. This is a
+JPEG image feed, not full-rate video or audio. Hidden browser tabs pause image
+requests; the camera test continues until stopped or its duration expires. The last frame remains after the test
 ends; check Running/Stopped for its state. Camera tests start manually and do
 not drive servos. They can run alongside the show, but detection adds Pi load.
 Start with capture only. Install python3-opencv on the Pi if needed.
