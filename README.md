@@ -26,6 +26,10 @@ SKELLXYZ/
 
 ## Boot setup
 
+To deploy updates on the Pi after initial setup, run `bash deploy.sh` from the
+repo root. It pulls `main`, refreshes the dashboard service, and restarts it with
+the show running. Run as `fpp`; the script requests sudo when needed.
+
 For the web dashboard and unified controller, use
 `sudo bash install_dashboard_service.sh` from the Pi checkout.
 This replaces the legacy service startup described below with a dashboard that

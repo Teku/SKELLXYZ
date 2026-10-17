@@ -86,8 +86,11 @@ sudo systemctl stop skeleton-dashboard.service
 Stopping the service asks the dashboard to stop its runner and release the servos.
 Systemd allows 60 seconds for cleanup before forcibly terminating remaining
 processes. An unexpected dashboard failure restarts the dashboard and starts the show again.
-For future code updates, run `git pull` and restart the dashboard service. Rerun
-the installer if the service template changes. To change the password, use
+For future code updates, run `bash deploy.sh` from the repo root as your normal
+Pi user (no sudo prefix). It runs `git pull`, refreshes the service unit, and
+restarts the dashboard. The show starts automatically; a running camera test
+stops. Existing password and settings are preserved. If pulling fails, the
+script stops before restarting the service. To change the password, use
 `sudoedit /etc/skeleton-dashboard.env` and restart the service.
 
 To return to the old boot launcher:
