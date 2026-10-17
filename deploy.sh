@@ -17,7 +17,6 @@ deploy() {
         echo "Commit or stash tracked changes before deploying." >&2
         return 1
     fi
-    sudo -v
     git pull
     # Refresh the unit as well as the code; preserve existing password/settings.
     sudo bash install_dashboard_service.sh
