@@ -70,7 +70,7 @@ class Camera:
             mode = data.get("detector", "capture")
             if mode not in ("capture", "person", "face"):
                 raise ValueError("Choose capture, person or face")
-            seconds = data.get("seconds", 60)
+            seconds = data.get("seconds", 10)
             if type(seconds) is not int or not 5 <= seconds <= 3600:
                 raise ValueError("Camera duration must be 5–3600 seconds")
             url = data.get("url") or self.saved_url()

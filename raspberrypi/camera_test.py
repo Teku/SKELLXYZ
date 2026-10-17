@@ -75,7 +75,7 @@ def main():
     parser.add_argument("--device", default="/dev/video0", help="V4L2 device path or camera index")
     parser.add_argument("--rtsp", action="store_true", help="Use SKELL_RTSP_URL or securely prompt for an RTSP URL")
     parser.add_argument("--rtsp-debug", action="store_true", help="Show raw connection errors, including any credentials in backend output")
-    parser.add_argument("--seconds", type=float, default=60)
+    parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument("--preview", action="store_true", help="Open a window on the Pi desktop (not plain SSH)")
     parser.add_argument("--detector", choices=("person", "face"), default="person", help="Full-body person detector or close-up frontal faces")
     parser.add_argument("--face-cascade", type=Path, help="Optional face cascade XML path")
