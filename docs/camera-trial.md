@@ -1,5 +1,34 @@
 # Standalone Aluratek AWC4KF camera trial
 
+## RTSP camera alternative
+
+For the deployed network camera, use `--rtsp` instead of the USB source:
+
+```bash
+python3 raspberrypi/camera_test.py --rtsp --capture-only --seconds 15 --snapshot /tmp/skell-camera.jpg
+python3 raspberrypi/camera_test.py --rtsp --detector person --seconds 60 --snapshot /tmp/skell-camera.jpg
+```
+
+Each command prompts for the full RTSP URL with input hidden. Paste it there;
+do not put credentials in tracked files or command arguments. Alternatively,
+set `SKELL_RTSP_URL` in the process environment. The script never prints the URL
+and suppresses native backend diagnostics during RTSP open/read because they
+can include credentials; connection failures still produce generic errors.
+
+RTSP uses FFmpeg over TCP with requested 10-second open and 5-second read
+timeouts. The OpenCV build must support FFmpeg and these timeout properties;
+unsupported builds fail rather than opening an unbounded stream. USB options
+are not applied to RTSP. Select resolution/frame rate on the camera itself;
+try a low-resolution substream on the Pi 3 if one is available. Downscaling
+for detection does not reduce the cost of decoding a high-resolution stream.
+Face mode (`--detector face`) and preview/snapshot options remain available.
+
+This is still a standalone diagnostic: no servo/audio integration, automatic
+reconnection, or guaranteed low-latency tracking. The existing synchronous
+detection loop may accumulate stream latency while detecting; measure it
+before using positions to control motion. RTSP connectivity must be tested
+on the Pi's network.
+
 `raspberrypi/camera_test.py` never imports servo/audio code or drives GPIO.
 Start with the skeleton controller stopped so the camera is stationary and
 we can measure the Pi 3 B+'s available performance independently.

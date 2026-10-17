@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Standalone USB camera/person-tracking experiment. No GPIO or audio imports."""
+"""Standalone USB/RTSP camera tracking experiment. No GPIO or audio imports."""
 import argparse
+import getpass
+from camera_source import open_source, read_source, validate_rtsp, quiet_native
 import math
 import os
 from pathlib import Path
@@ -71,6 +73,7 @@ class Target:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", default="/dev/video0", help="V4L2 device path or camera index")
+    parser.add_argument("--rtsp", action="store_true", help="Use SKELL_RTSP_URL or securely prompt for an RTSP URL")
     parser.add_argument("--seconds", type=float, default=60)
     parser.add_argument("--preview", action="store_true", help="Open a window on the Pi desktop (not plain SSH)")
     parser.add_argument("--detector", choices=("person", "face"), default="person", help="Full-body person detector or close-up frontal faces")
@@ -93,8 +96,14 @@ def main():
     except ImportError:
         parser.exit(1, "OpenCV missing: install python3-opencv on the Pi.\n")
     cv2.setNumThreads(1)
-    device = int(args.device) if args.device.isdigit() else args.device
-    cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+    rtsp_url = None
+    if args.rtsp:
+        rtsp_url = os.environ.get("SKELL_RTSP_URL") or getpass.getpass("RTSP URL (hidden): ")
+        try:
+            validate_rtsp(rtsp_url)
+        except ValueError as exc:
+            parser.error(str(exc))
+    cap = open_source(cv2, args.device, rtsp_url)
     stopping = False
     previous = {}
     def stop(signum, frame):
@@ -105,11 +114,6 @@ def main():
             previous[sig] = signal.signal(sig, stop)
         if not cap.isOpened():
             raise RuntimeError("Cannot open camera. Check v4l2-ctl --list-devices and --device.")
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_FPS, 15)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         hog = face = None
         if not args.capture_only:
             if args.detector == "face":
@@ -127,11 +131,11 @@ def main():
         frames, detections, detector_ms = 0, 0, 0.0
         first = True
         while not stopping and time.monotonic() - started < args.seconds:
-            ok, frame = cap.read()
+            ok, frame = read_source(cap, args.rtsp)
             if not ok or frame is None:
-                raise RuntimeError("Camera stopped returning frames; check USB connection/device ownership.")
+                raise RuntimeError("Camera stopped returning frames; check source connection and device ownership.")
             if first:
-                print("Camera frame: %dx%d; requested 640x480 MJPEG/15fps" % (frame.shape[1], frame.shape[0]), flush=True)
+                print("Camera frame: %dx%d; source=%s" % (frame.shape[1], frame.shape[0], "RTSP/TCP" if args.rtsp else "USB (requested 640x480 MJPEG/15fps)"), flush=True)
                 first = False
             # Continuous reads discard intervening frames; do not sleep between
             # detections and accumulate a backlog of camera frames.
@@ -177,7 +181,11 @@ def main():
         elapsed = max(0.001, time.monotonic() - started)
         print("Finished: %.1f capture fps, %.2f detections/sec; no servos controlled." % (frames / elapsed, detections / elapsed))
     finally:
-        cap.release()
+        if args.rtsp:
+            with quiet_native():
+                cap.release()
+        else:
+            cap.release()
         if args.preview:
             cv2.destroyAllWindows()
         for sig, handler in previous.items():
