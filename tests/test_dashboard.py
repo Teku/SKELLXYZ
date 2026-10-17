@@ -31,6 +31,42 @@ class DashboardTests(unittest.TestCase):
         Camera._finish_stop(process)
         process.kill.assert_called_once()
 
+    def test_camera_signals_surround_capture_and_resume_show(self):
+        for cancel in (False, True):
+            events = []
+            controller = MagicMock()
+            controller.lock = threading.RLock()
+            controller.mode, controller.stopping = "show", False
+            previous = MagicMock()
+            previous.poll.return_value = None
+            previous.wait.side_effect = lambda **kw: events.append("released") or 0
+            controller.process = previous
+            controller.stop.side_effect = lambda: events.append("stop")
+            camera = Camera(controller=controller)
+            camera.active = True
+            def start(action, **kwargs):
+                events.append(action)
+                process = MagicMock()
+                process.wait.return_value = 0
+                controller.process = process
+                if cancel and action == "yes":
+                    camera.cancelled.set()
+            controller.start.side_effect = start
+            def launch(*args):
+                events.append("capture")
+                camera.process = MagicMock()
+                camera.process.wait.return_value = 0
+            try:
+                with patch.object(camera, "_launch", side_effect=launch):
+                    camera._motion_test([], {}, "rtsp://camera/live", 10)
+                self.assertEqual(events, ["stop", "released", "yes"] if cancel else
+                                 ["stop", "released", "yes", "capture", "no", "show"])
+                self.assertFalse(camera.active)
+                self.assertFalse(controller.camera_owned)
+            finally:
+                camera.process = None
+                camera.close()
+
     def test_camera_countdown_starts_and_cancels_on_server(self):
         camera = Camera()
         camera.url_path = Path(camera.directory.name) / "source.json"

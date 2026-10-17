@@ -28,7 +28,11 @@ ROOT = Path(__file__).resolve().parent
 
 
 class Camera:
-    def __init__(self, url_path=ROOT / "camera-source.json"):
+    def __init__(self, url_path=ROOT / "camera-source.json", controller=None):
+        self.controller = controller
+        self.active = False
+        self.cancelled = threading.Event()
+        self.worker = None
         self.url_path = Path(url_path)
         self.pending = None
         self.start_at = None
@@ -41,7 +45,7 @@ class Camera:
 
     def status(self):
         with self.lock:
-            return dict(running=self.process is not None and self.process.poll() is None,
+            return dict(running=self.active or (self.process is not None and self.process.poll() is None),
                         scheduled=self.pending is not None,
                         starts_in=max(0, math.ceil(self.start_at - time.monotonic())) if self.start_at is not None else 0,
                         logs=list(self.logs), preview=self.snapshot.exists(), gif=self.gif.exists(),
@@ -71,6 +75,8 @@ class Camera:
 
     def start(self, data):
         with self.lock:
+            if self.active:
+                raise ValueError("Camera test and motion cues are still running")
             if self.pending is not None:
                 raise ValueError("Cancel the scheduled camera test first")
             if self.process is not None and self.process.poll() is None:
@@ -108,10 +114,76 @@ class Camera:
             if self.snapshot.exists():
                 self.snapshot.unlink()
             self.logs.clear()
-            self.process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
-                                            stderr=subprocess.STDOUT, text=True, bufsize=1)
-            threading.Thread(target=self._collect, args=(self.process, url), daemon=True).start()
-            threading.Thread(target=self._watch, args=(self.process, seconds), daemon=True).start()
+            if self.controller is not None:
+                self.cancelled.clear()
+                self.active = True
+                self.worker = threading.Thread(target=self._motion_test, args=(command, env, url, seconds), daemon=True)
+                self.worker.start()
+            else:
+                self._launch(command, env, url, seconds)
+
+    def _launch(self, command, env, url, seconds):
+        self.process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True, bufsize=1)
+        threading.Thread(target=self._collect, args=(self.process, url), daemon=True).start()
+        threading.Thread(target=self._watch, args=(self.process, seconds), daemon=True).start()
+
+    def _motion_test(self, command, env, url, seconds):
+        controller = self.controller
+        resume = None
+        reserved = False
+        try:
+            with controller.lock:
+                if self.cancelled.is_set():
+                    return
+                controller.camera_owned = True
+                reserved = True
+                previous = controller.process
+                if previous is not None and previous.poll() is None:
+                    if controller.mode in ("show", "head") and not controller.stopping:
+                        resume = controller.mode
+                    controller.stop()
+            if previous is not None:
+                previous.wait(timeout=45)
+            if not self._cue("yes"):
+                return
+            with self.lock:
+                if self.cancelled.is_set():
+                    return
+                self.logs.append("Start nod finished; starting camera capture")
+                self._launch(command, env, url, seconds)
+                process = self.process
+            code = process.wait()
+            if code == 0 and not self.cancelled.is_set():
+                self._cue("no")
+        except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+            controller.stop()
+            with self.lock:
+                self.logs.append("Camera motion sequence failed: " + str(exc))
+        finally:
+            if reserved:
+                with controller.lock:
+                    controller.camera_owned = False
+                    if resume and not self.cancelled.is_set():
+                        try:
+                            controller.start(resume)
+                        except (ValueError, OSError) as exc:
+                            self.logs.append("Could not resume show: " + str(exc))
+            with self.lock:
+                self.active = False
+
+    def _cue(self, action):
+        with self.controller.lock:
+            if self.cancelled.is_set():
+                return False
+            self.controller.start(action, camera_owned=True)
+            process = self.controller.process
+        with self.lock:
+            self.logs.append("Camera signal: " + action)
+        code = process.wait(timeout=45)
+        if code != 0 and not self.cancelled.is_set():
+            raise ValueError("Head signal failed; see the home activity log")
+        return not self.cancelled.is_set()
 
     def _start_scheduled(self, timer, data):
         with self.lock:
@@ -162,6 +234,9 @@ class Camera:
             self.logs.append("Camera test exited with code " + str(code))
 
     def stop(self):
+        self.cancelled.set()
+        if self.active and self.controller is not None:
+            self.controller.stop()
         with self.lock:
             if self.pending is not None:
                 self.pending.cancel()
@@ -179,11 +254,14 @@ class Camera:
             except subprocess.TimeoutExpired:
                 self.process.kill()  # Camera worker has no servo ownership.
                 self.process.wait()
+        if self.worker is not None:
+            self.worker.join()
         self.directory.cleanup()
 
 
 class Controller:
     def __init__(self, dry_run=False, preferences=PATH):
+        self.camera_owned = False
         self.dry_run, self.preferences = dry_run, Path(preferences)
         self.lock = threading.RLock()
         self.process = None
@@ -202,8 +280,10 @@ class Controller:
                         simulation=self.dry_run, logs=list(self.logs),
                         settings=read(self.preferences), catalog=catalog())
 
-    def start(self, mode="show", clip=None):
+    def start(self, mode="show", clip=None, camera_owned=False):
         with self.lock:
+            if self.camera_owned and not camera_owned:
+                raise ValueError("Wait for the camera test and head signals to finish")
             if self.process is not None and self.process.poll() is None:
                 raise ValueError("Stop the current run and wait for it to finish first")
             if mode not in ("show", "head", "say", *NAMES):
@@ -356,6 +436,8 @@ def handler_for(controller, password, camera=None):
                 elif self.path == "/api/start":
                     controller.start(data.get("mode", "show"), data.get("clip"))
                 elif self.path == "/api/stop":
+                    if camera is not None:
+                        camera.stop()
                     controller.stop()
                 else:
                     self.send(404, {"error": "Not found"})
@@ -377,7 +459,7 @@ def main():
     if len(password) < 8 or not password.isascii():
         parser.error("Use a password of at least 8 ASCII characters")
     controller = Controller(args.dry_run)
-    camera = Camera()
+    camera = Camera(controller=controller)
     server = ThreadingHTTPServer((args.host, args.port), handler_for(controller, password, camera))
     def shutdown(signum, frame):
         threading.Thread(target=server.shutdown, daemon=True).start()

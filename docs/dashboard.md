@@ -165,3 +165,12 @@ Press Start camera test before walking to the skeleton. The Pi owns the countdow
 and recording, so closing the page or losing Wi-Fi does not cancel it. Return to
 Camera debug afterward to view/download the GIF. Cancel countdown stops a pending
 test; set delay to 0 for an immediate test. Restarting the service cancels pending tests.
+
+Camera tests now signal with the existing silent head gestures: after the
+countdown, the show pauses and releases its servos, the head nods yes, and camera
+capture begins. After a successful test/GIF export, the head shakes no and the
+previous show or head-only mode resumes. A previously stopped show stays stopped.
+Cancel/Stop ends the sequence without the ending gesture or automatic resume.
+The home Stop button also cancels camera tests. Existing servo calibration and
+movement restrictions apply to both signals. Camera tracking itself does not
+steer the head. No extra servo controller runs alongside the show.
