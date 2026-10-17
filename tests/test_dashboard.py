@@ -33,6 +33,7 @@ class DashboardTests(unittest.TestCase):
 
     def test_camera_worker_validation_and_private_url(self):
         camera = Camera()
+        camera.url_path = Path(camera.directory.name) / "source.json"
         try:
             with self.assertRaises(ValueError):
                 camera.start({"url": "http://camera/live"})
@@ -44,6 +45,14 @@ class DashboardTests(unittest.TestCase):
                 self.assertNotIn(url, " ".join(spawn.call_args.args[0]))
                 self.assertEqual(spawn.call_args.kwargs["env"]["SKELL_RTSP_URL"], url)
                 self.assertNotIn(url, json.dumps(camera.status()))
+                restored = Camera(camera.url_path)
+                try:
+                    self.assertEqual(restored.saved_url(), url)
+                    self.assertTrue(restored.status()["configured"])
+                    restored.save_url("rtsp://replacement/live")
+                    self.assertEqual(camera.saved_url(), "rtsp://replacement/live")
+                finally:
+                    restored.close()
                 with self.assertRaises(ValueError):
                     camera.start({"url": url})
                 camera.stop()

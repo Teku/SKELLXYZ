@@ -27,7 +27,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 class Camera:
-    def __init__(self):
+    def __init__(self, url_path=ROOT / "camera-source.json"):
+        self.url_path = Path(url_path)
         self.lock = threading.RLock()
         self.process = None
         self.logs = deque(maxlen=60)
@@ -38,7 +39,29 @@ class Camera:
         with self.lock:
             return dict(running=self.process is not None and self.process.poll() is None,
                         logs=list(self.logs), preview=self.snapshot.exists(),
-                        configured=bool(os.environ.get("SKELL_RTSP_URL")))
+                        configured=self.url_path.exists() or bool(os.environ.get("SKELL_RTSP_URL")))
+
+    def saved_url(self):
+        try:
+            value = json.loads(self.url_path.read_text(encoding="utf-8"))["url"]
+            if not isinstance(value, str):
+                raise ValueError()
+            return validate_rtsp(value)
+        except FileNotFoundError:
+            return os.environ.get("SKELL_RTSP_URL", "")
+        except (ValueError, KeyError, TypeError):
+            raise ValueError("Saved camera URL is invalid; enter a replacement URL") from None
+
+    def save_url(self, url):
+        # mkstemp creates an owner-only file; replace keeps the update atomic.
+        fd, temporary = tempfile.mkstemp(prefix="camera-source.", suffix=".tmp", dir=self.url_path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump({"url": url}, stream)
+            os.replace(temporary, self.url_path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     def start(self, data):
         with self.lock:
@@ -50,10 +73,11 @@ class Camera:
             seconds = data.get("seconds", 60)
             if type(seconds) is not int or not 5 <= seconds <= 3600:
                 raise ValueError("Camera duration must be 5–3600 seconds")
-            url = data.get("url") or os.environ.get("SKELL_RTSP_URL")
+            url = data.get("url") or self.saved_url()
             if not isinstance(url, str) or not url:
-                raise ValueError("Enter the RTSP URL or configure SKELL_RTSP_URL")
+                raise ValueError("Enter the RTSP URL once to save it on the Pi")
             validate_rtsp(url)
+            self.save_url(url)
             command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp",
                        "--seconds", str(seconds), "--snapshot-hz", "5", "--snapshot", str(self.snapshot)]
             command += ["--capture-only"] if mode == "capture" else ["--detector", mode]

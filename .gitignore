@@ -5,3 +5,7 @@ raspberrypi/dashboard-settings.tmp
 raspberrypi/.skeleton.lock
 raspberrypi/__pycache__/
 tests/__pycache__/
+
+# Saved camera credentials and atomic-write temporary files
+raspberrypi/camera-source.json
+raspberrypi/camera-source.*.tmp

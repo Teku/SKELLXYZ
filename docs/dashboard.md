@@ -127,8 +127,11 @@ ends; check Running/Stopped for its state. Camera tests start manually and do
 not drive servos. They can run alongside the show, but detection adds Pi load.
 Start with capture only. Install python3-opencv on the Pi if needed.
 
-The URL is passed through the worker environment, not command arguments, saved
-settings, or the status API. For repeated use add SKELL_RTSP_URL to the protected
+The URL is saved server-side in gitignored `raspberrypi/camera-source.json`,
+readable only by its owner on the Pi. It is passed through the worker environment,
+not command arguments or the status API. Leave the field blank to reuse it, or
+enter a new URL to replace it. The saved URL survives service restarts and deployments
+and takes priority over SKELL_RTSP_URL. For repeated use add SKELL_RTSP_URL to the protected
 /etc/skeleton-dashboard.env file using sudoedit, and restart the service.
 Stop camera test stops only the camera; stopping the dashboard stops both workers.
 
