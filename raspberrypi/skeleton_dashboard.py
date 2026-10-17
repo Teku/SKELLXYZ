@@ -5,6 +5,9 @@ import base64
 from collections import deque
 import getpass
 import hmac
+import hashlib
+import secrets
+from http.cookies import SimpleCookie, CookieError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -157,11 +160,17 @@ class Controller:
 
 
 def handler_for(controller, password, camera=None):
+    session_key = hashlib.pbkdf2_hmac("sha256", password.encode("ascii"), b"skell-dashboard-session-v1", 200000)
+    lifetime = 30 * 24 * 60 * 60
+
+    def sign(payload):
+        return hmac.new(session_key, payload.encode("ascii"), "sha256").hexdigest()
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
-        def send(self, status, data, content_type="application/json"):
+        def send(self, status, data, content_type="application/json", cookie=None):
             body = json.dumps(data).encode() if content_type == "application/json" else data
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -169,13 +178,25 @@ def handler_for(controller, password, camera=None):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
+            if cookie is not None:
+                self.send_header("Set-Cookie", cookie)
             self.end_headers()
             self.wfile.write(body)
 
         def authorized(self):
             supplied = self.headers.get("Authorization", "")
             expected = b"Basic " + base64.b64encode(("admin:" + password).encode("ascii"))
-            return hmac.compare_digest(supplied.encode(), expected)
+            if supplied:
+                return hmac.compare_digest(supplied.encode(), expected)
+            try:
+                cookies = SimpleCookie(self.headers.get("Cookie", ""))
+                token = cookies["skell_session"].value
+                expires, nonce, signature = token.split(".")
+                payload = expires + "." + nonce
+                return (time.time() < int(expires) <= time.time() + lifetime
+                        and hmac.compare_digest(signature, sign(payload)))
+            except (CookieError, KeyError, ValueError, UnicodeError):
+                return False
 
         def do_GET(self):
             if self.path == "/":
@@ -224,7 +245,15 @@ def handler_for(controller, password, camera=None):
                 data = json.loads(self.rfile.read(size))
                 if not isinstance(data, dict):
                     raise ValueError("JSON object required")
-                if self.path == "/api/camera/start" and camera is not None:
+                if self.path == "/api/login":
+                    payload = str(int(time.time()) + lifetime) + "." + secrets.token_hex(16)
+                    cookie = "skell_session=" + payload + "." + sign(payload) + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" + str(lifetime)
+                    self.send(200, {"ok": True}, cookie=cookie)
+                    return
+                elif self.path == "/api/logout":
+                    self.send(200, {"ok": True}, cookie="skell_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
+                    return
+                elif self.path == "/api/camera/start" and camera is not None:
                     camera.start(data)
                 elif self.path == "/api/camera/stop" and camera is not None:
                     camera.stop()

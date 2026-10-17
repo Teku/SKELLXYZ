@@ -69,15 +69,32 @@ class DashboardTests(unittest.TestCase):
             snapshot.write_bytes(b"test-jpeg")
             camera = SimpleNamespace(snapshot=snapshot, status=lambda: {"running": True})
             handler = handler_for(controller, "test-password", camera)
-            def request(method, path, data=None, authorized=False, username="admin", password="test-password"):
+            def request(method, path, data=None, authorized=False, username="admin", password="test-password", cookie=None):
                 body = json.dumps(data).encode() if data is not None else b""
                 headers = f"{method} {path} HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\n"
                 if authorized:
                     token = base64.b64encode(f"{username}:{password}".encode()).decode()
                     headers += f"Authorization: Basic {token}\r\n"
+                if cookie:
+                    headers += f"Cookie: {cookie}\r\n"
                 connection = Connection(headers.encode() + b"\r\n" + body)
                 handler(connection, ("127.0.0.1", 1), None)
                 return bytes(connection.output)
+            login = request("POST", "/api/login", {}, authorized=True)
+            cookie_header = next(line for line in login.split(b"\r\n") if line.startswith(b"Set-Cookie:"))
+            cookie = cookie_header.decode().split(": ", 1)[1].split(";", 1)[0]
+            self.assertIn(b"HttpOnly", cookie_header)
+            self.assertIn(b"SameSite=Strict", cookie_header)
+            handler = handler_for(controller, "test-password", camera)  # Simulate restart.
+            self.assertIn(b"200", request("GET", "/api/status", cookie=cookie))
+            self.assertIn(b"200", request("GET", "/api/camera/preview", cookie=cookie))
+            self.assertIn(b"401", request("GET", "/api/status", cookie=cookie + "bad"))
+            with patch("skeleton_dashboard.time.time", return_value=9999999999):
+                self.assertIn(b"401", request("GET", "/api/status", cookie=cookie))
+            self.assertIn(b"Max-Age=0", request("POST", "/api/logout", {}, cookie=cookie))
+            handler = handler_for(controller, "changed-password", camera)
+            self.assertIn(b"401", request("GET", "/api/status", cookie=cookie))
+            handler = handler_for(controller, "test-password", camera)
             self.assertIn(b"401", request("GET", "/api/status"))
             self.assertIn(b"Camera debug", request("GET", "/camera"))
             for endpoint in ("/api/camera/status", "/api/camera/preview"):

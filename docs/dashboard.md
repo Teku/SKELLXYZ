@@ -49,7 +49,7 @@ HTTP is for a trusted LAN only; do not forward this port to the Internet. For
 an encrypted connection, bind the default localhost address and use a KiTTY/SSH
 local tunnel from port 8080 to localhost:8080, then browse http://localhost:8080.
 Interactive passwords are held only in memory in the server and browser tab. API endpoints
-require HTTP Basic authentication with username `admin`; the unauthenticated page contains no status data.
+accept a remembered session or HTTP Basic authentication with username `admin`; the unauthenticated page contains no status data.
 For unattended startup supply `SKELL_DASHBOARD_PASSWORD` through a protected
 service environment file. No password is stored in this repository.
 
@@ -128,3 +128,11 @@ The URL is passed through the worker environment, not command arguments, saved
 settings, or the status API. For repeated use add SKELL_RTSP_URL to the protected
 /etc/skeleton-dashboard.env file using sudoedit, and restart the service.
 Stop camera test stops only the camera; stopping the dashboard stops both workers.
+
+## Remembered login
+
+Sign in once on either page. A signed HttpOnly cookie keeps this browser signed
+in for 30 days across page navigation, browser restarts, and dashboard/Pi restarts.
+Use the same hostname or IP each time; browser cookies belong to that address.
+The password is not stored in browser storage. Changing the dashboard password
+invalidates existing cookies. Sign out clears the cookie in this browser.
