@@ -64,6 +64,36 @@ class Camera:
             self.process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
                                             stderr=subprocess.STDOUT, text=True, bufsize=1)
             threading.Thread(target=self._collect, args=(self.process, url), daemon=True).start()
+            threading.Thread(target=self._watch, args=(self.process, seconds), daemon=True).start()
+
+    def _watch(self, process, seconds):
+        started = last_frame = time.monotonic()
+        stamp = None
+        while True:
+            try:
+                process.wait(timeout=2)
+                return
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                current = self.snapshot.stat().st_mtime_ns
+                if current != stamp:
+                    stamp, last_frame = current, time.monotonic()
+            except FileNotFoundError:
+                pass
+            now = time.monotonic()
+            if now - last_frame > 30 or now - started > seconds + 30:
+                with self.lock:
+                    self.logs.append("Camera timed out; check the stream and network connection")
+                process.kill()
+                return
+
+    @staticmethod
+    def _finish_stop(process):
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
 
     def _collect(self, process, url):
         for line in process.stdout:
@@ -78,6 +108,7 @@ class Camera:
         with self.lock:
             if self.process is not None and self.process.poll() is None:
                 self.process.terminate()
+                threading.Thread(target=self._finish_stop, args=(self.process,), daemon=True).start()
 
     def close(self):
         self.stop()

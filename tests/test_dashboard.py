@@ -22,6 +22,15 @@ from skeleton_run import run
 
 
 class DashboardTests(unittest.TestCase):
+    def test_camera_stop_kills_only_stalled_worker(self):
+        import subprocess
+        process = MagicMock()
+        Camera._finish_stop(process)
+        process.kill.assert_not_called()
+        process.wait.side_effect = subprocess.TimeoutExpired("camera", 10)
+        Camera._finish_stop(process)
+        process.kill.assert_called_once()
+
     def test_camera_worker_validation_and_private_url(self):
         camera = Camera()
         try:

@@ -139,3 +139,8 @@ in for 30 days across page navigation, browser restarts, and dashboard/Pi restar
 Use the same hostname or IP each time; browser cookies belong to that address.
 The password is not stored in browser storage. Changing the dashboard password
 invalidates existing cookies. Sign out clears the cookie in this browser.
+
+Older OpenCV builds use the legacy FFmpeg RTSP open call. The dashboard also
+watches the camera worker: 30 seconds without a new preview ends a stalled test.
+Stop allows 10 seconds for the camera to exit before terminating it. These
+limits apply only to the camera process, never the servo controller.

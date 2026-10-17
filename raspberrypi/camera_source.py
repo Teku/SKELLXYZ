@@ -41,17 +41,19 @@ def open_source(cv2, device, rtsp_url=None):
         return cap
     validate_rtsp(rtsp_url)
     required = ("CAP_PROP_OPEN_TIMEOUT_MSEC", "CAP_PROP_READ_TIMEOUT_MSEC")
-    if not all(hasattr(cv2, name) for name in required):
-        raise RuntimeError("RTSP requires an OpenCV build with FFmpeg open/read timeout support; check your OpenCV version.")
+    modern = all(hasattr(cv2, name) for name in required)
     cap = cv2.VideoCapture()
     key = "OPENCV_FFMPEG_CAPTURE_OPTIONS"
     previous = os.environ.get(key)
-    os.environ[key] = "rtsp_transport;tcp"
+    os.environ[key] = "rtsp_transport;tcp" if modern else "rtsp_transport;tcp|stimeout;5000000"
     try:
         with quiet_native():
-            ok = cap.open(rtsp_url, cv2.CAP_FFMPEG,
-                          [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
-                           cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000])
+            if modern:
+                ok = cap.open(rtsp_url, cv2.CAP_FFMPEG,
+                              [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
+                               cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000])
+            else:
+                ok = cap.open(rtsp_url, cv2.CAP_FFMPEG)
         if not ok:
             raise RuntimeError("RTSP connection failed")
         return cap

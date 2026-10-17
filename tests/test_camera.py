@@ -34,6 +34,18 @@ class TrackingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_rtsp("https://example.com")
 
+    def test_legacy_rtsp_uses_two_argument_open(self):
+        calls = []
+        class Capture:
+            def open(self, *args):
+                calls.append((args, os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"]))
+                return True
+        cv = SimpleNamespace(VideoCapture=Capture, CAP_FFMPEG=1900)
+        with patch.dict(os.environ, OPENCV_FFMPEG_CAPTURE_OPTIONS="original"):
+            open_source(cv, "0", "rtsp://camera/live")
+            self.assertEqual(os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"], "original")
+        self.assertEqual(calls, [(("rtsp://camera/live", 1900), "rtsp_transport;tcp|stimeout;5000000")])
+
     def test_face_cascade_loading_and_errors(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "face.xml"
