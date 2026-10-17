@@ -78,7 +78,7 @@ class Camera:
                 raise ValueError("Enter the RTSP URL once to save it on the Pi")
             validate_rtsp(url)
             self.save_url(url)
-            command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp",
+            command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp", "--rtsp-debug",
                        "--seconds", str(seconds), "--snapshot-hz", "5", "--snapshot", str(self.snapshot)]
             command += ["--capture-only"] if mode == "capture" else ["--detector", mode]
             env = dict(os.environ, SKELL_RTSP_URL=url)
@@ -122,7 +122,7 @@ class Camera:
     def _collect(self, process, url):
         for line in process.stdout:
             with self.lock:
-                self.logs.append(line.rstrip().replace(url, "[RTSP source]"))
+                self.logs.append(line.rstrip())
         process.stdout.close()
         code = process.wait()
         with self.lock:

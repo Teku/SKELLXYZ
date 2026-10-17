@@ -46,6 +46,9 @@ class TrackingTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as caught:
             open_source(cv, "0", url)
         message = str(caught.exception)
+        with self.assertRaises(RuntimeError) as raw:
+            open_source(cv, "0", url, debug=True)
+        self.assertIn(url, str(raw.exception))
         self.assertIn("461 Unsupported Transport", message)
         self.assertNotIn("secret-value", message)
         self.assertNotIn("viewer", message)

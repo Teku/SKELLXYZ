@@ -74,6 +74,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", default="/dev/video0", help="V4L2 device path or camera index")
     parser.add_argument("--rtsp", action="store_true", help="Use SKELL_RTSP_URL or securely prompt for an RTSP URL")
+    parser.add_argument("--rtsp-debug", action="store_true", help="Show raw connection errors, including any credentials in backend output")
     parser.add_argument("--seconds", type=float, default=60)
     parser.add_argument("--preview", action="store_true", help="Open a window on the Pi desktop (not plain SSH)")
     parser.add_argument("--detector", choices=("person", "face"), default="person", help="Full-body person detector or close-up frontal faces")
@@ -106,7 +107,7 @@ def main():
             validate_rtsp(rtsp_url)
         except ValueError as exc:
             parser.error(str(exc))
-    cap = open_source(cv2, args.device, rtsp_url)
+    cap = open_source(cv2, args.device, rtsp_url, debug=args.rtsp_debug)
     stopping = False
     previous = {}
     def stop(signum, frame):

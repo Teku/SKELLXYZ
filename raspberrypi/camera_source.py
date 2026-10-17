@@ -48,7 +48,7 @@ def redact_diagnostic(text, url):
 
 
 @contextmanager
-def capture_native(lines, url):
+def capture_native(lines, url, debug=False):
     saved = os.dup(2)
     try:
         with tempfile.TemporaryFile() as sink:
@@ -58,13 +58,14 @@ def capture_native(lines, url):
             finally:
                 os.dup2(saved, 2)
                 sink.seek(0)
-                lines.append(redact_diagnostic(sink.read(65536).decode("utf-8", "replace"), url))
+                output = sink.read(65536).decode("utf-8", "replace")
+                lines.append(output if debug else redact_diagnostic(output, url))
     finally:
         os.dup2(saved, 2)
         os.close(saved)
 
 
-def open_source(cv2, device, rtsp_url=None):
+def open_source(cv2, device, rtsp_url=None, debug=False):
     if rtsp_url is None:
         cap = cv2.VideoCapture(int(device) if device.isdigit() else device, cv2.CAP_V4L2)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
@@ -82,7 +83,7 @@ def open_source(cv2, device, rtsp_url=None):
     os.environ[key] = "rtsp_transport;tcp" if modern else "rtsp_transport;tcp|stimeout;5000000"
     diagnostic = []
     try:
-        with capture_native(diagnostic, rtsp_url):
+        with capture_native(diagnostic, rtsp_url, debug):
             if modern:
                 ok = cap.open(rtsp_url, cv2.CAP_FFMPEG,
                               [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
@@ -96,7 +97,7 @@ def open_source(cv2, device, rtsp_url=None):
         with quiet_native():
             cap.release()
         detail = "\n".join(line for line in diagnostic if line)
-        detail = detail or redact_diagnostic(str(exc), rtsp_url)
+        detail = detail or (str(exc) if debug else redact_diagnostic(str(exc), rtsp_url))
         raise RuntimeError("Cannot open RTSP stream. OpenCV/FFmpeg detail: " + (detail or "No backend diagnostic returned")) from None
     finally:
         if previous is None:
