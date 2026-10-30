@@ -58,6 +58,27 @@ def geometry_pose(configs, x, y, aspect, s, reverse_x=False, reverse_y=False):
     return rest
 
 
+class TargetLinger:
+    """Keep the last aim through brief detection gaps, then return to rest."""
+    def __init__(self, rest, seconds=5):
+        self.rest = dict(rest)
+        self.seconds = seconds
+        self.last_target = None
+        self.lost_at = None
+
+    def update(self, target, tracking, now):
+        if tracking:
+            self.last_target = dict(target)
+            self.lost_at = None
+            return target, True
+        if self.last_target is not None:
+            if self.lost_at is None:
+                self.lost_at = now
+            if now - self.lost_at < self.seconds:
+                return dict(self.last_target), True
+        return dict(self.rest), False
+
+
 class FollowMotion:
     """Continuously retargetable damped motion with bounded speed/acceleration."""
     def __init__(self, configs, speed=10, acceleration=20):
@@ -99,6 +120,7 @@ def main():
     configs = get_servo_configs()
     motion = FollowMotion(configs, speed=settings["speed"] if settings else 10, acceleration=settings["acceleration"] if settings else 20)
     rest = {n: configs[n]["rest"] for n in HEAD}
+    linger = TargetLinger(rest)
     stopping = False
     def stop(*unused):
         nonlocal stopping
@@ -117,6 +139,7 @@ def main():
                 except (OSError, ValueError):
                     data = {}
                 target, tracking = target_pose(configs, data, time.time(), args.reverse_x, args.reverse_y, settings)
+                target, tracking = linger.update(target, tracking, now)
                 pose = motion.step(target, now-previous_tick)
                 previous_tick = now
                 if not tracking and motion.settled(rest):

@@ -5,7 +5,7 @@ import math
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "raspberrypi"))
 from motion_tracking import StableTarget, MotionDetector
 from tracking_settings import DEFAULTS, validate
-from head_follow import geometry_pose, FollowMotion
+from head_follow import geometry_pose, FollowMotion, TargetLinger
 from servo_config import get_servo_configs
 
 
@@ -63,6 +63,23 @@ class TrackingPipelineTests(unittest.TestCase):
         for _ in range(1000):
             motion.step(rest, .02)
         self.assertTrue(motion.settled(rest))
+
+    def test_linger_holds_through_loss_reacquires_and_expires(self):
+        rest = {"Base": 0, "Pitch": 0, "Tilt": 0}
+        linger = TargetLinger(rest)
+        self.assertEqual(linger.update(rest, False, 0), (rest, False))
+        first = dict(rest, Base=10)
+        self.assertEqual(linger.update(first, True, 1), (first, True))
+        self.assertEqual(linger.update(rest, False, 2), (first, True))
+        self.assertEqual(linger.update(rest, False, 6.9), (first, True))
+        self.assertEqual(linger.update(rest, False, 7), (rest, False))
+        second = dict(rest, Base=-10)
+        self.assertEqual(linger.update(second, True, 8), (second, True))
+        self.assertEqual(linger.update(rest, False, 9), (second, True))
+        third = dict(rest, Base=5)
+        self.assertEqual(linger.update(third, True, 10), (third, True))
+        self.assertEqual(linger.update(rest, False, 11), (third, True))
+        self.assertEqual(linger.update(rest, False, 16), (rest, False))
 
     def test_invalid_tracking_settings_rejected(self):
         for values in ({"hfov":float("nan")}, {"speed":1000}, {"roi_left":80,"roi_right":20}, {"geometry":"true"}):

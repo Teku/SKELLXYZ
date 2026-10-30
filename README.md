@@ -223,3 +223,5 @@ Camera tracking and attract scheduling are deferred.
 Inspired by the [3-Axis Skull Mod for 12ft Skeleton](https://hackaday.io/project/181103-3-axis-skull-mod-for-12ft-skeleton) by Steven Long.
 
 ChatterPi jaw animation: see `raspberrypi/vendor/ChatterPi/README.md`.
+
+Head following holds its last target for five seconds after tracking is lost, then smoothly returns to the configured rest position and releases the servos. Reacquiring a target interrupts the hold immediately. Stopping or ending the camera test bypasses the hold and performs the normal cleanup; existing speed, acceleration, and servo limits still apply.
