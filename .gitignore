@@ -9,3 +9,6 @@ tests/__pycache__/
 # Saved camera credentials and atomic-write temporary files
 raspberrypi/camera-source.json
 raspberrypi/camera-source.*.tmp
+
+raspberrypi/tracking-settings.json
+raspberrypi/tracking-settings.tmp

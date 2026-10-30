@@ -23,6 +23,7 @@ import time
 from skeleton_preferences import PATH, catalog, read, save
 from skeleton_gestures import NAMES
 from camera_source import validate_rtsp
+import tracking_settings
 
 ROOT = Path(__file__).resolve().parent
 
@@ -52,6 +53,7 @@ class Camera:
                         scheduled=self.pending is not None,
                         starts_in=max(0, math.ceil(self.start_at - time.monotonic())) if self.start_at is not None else 0,
                         logs=list(self.logs), preview=self.snapshot.exists(), gif=self.gif.exists(),
+                        tracking=tracking_settings.read(self.url_path.with_name("tracking-settings.json")),
                         configured=self.url_path.exists() or bool(os.environ.get("SKELL_RTSP_URL")))
 
     def saved_url(self):
@@ -85,13 +87,13 @@ class Camera:
             if self.process is not None and self.process.poll() is None:
                 raise ValueError("Stop the current camera test first")
             mode = data.get("detector", "capture")
-            if mode not in ("capture", "person", "face"):
-                raise ValueError("Choose capture, person or face")
+            if mode not in ("capture", "person", "face", "motion"):
+                raise ValueError("Choose capture, person, face or motion")
             for key in ("follow", "reverse_x", "reverse_y"):
                 if key in data and type(data[key]) is not bool:
                     raise ValueError("Tracking options must be true or false")
             if data.get("follow") and mode == "capture":
-                raise ValueError("Choose Full body or Face to follow a person")
+                raise ValueError("Choose Motion, Full body or Face to follow a target")
             seconds = data.get("seconds", 10)
             if type(seconds) is not int or not 5 <= seconds <= 3600:
                 raise ValueError("Camera duration must be 5–3600 seconds")
@@ -102,6 +104,9 @@ class Camera:
             if not isinstance(url, str) or not url:
                 raise ValueError("Enter the RTSP URL once to save it on the Pi")
             validate_rtsp(url)
+            tracking_path = self.url_path.with_name("tracking-settings.json")
+            tracking = tracking_settings.validate(data.get("tracking", tracking_settings.read(tracking_path)))
+            tracking_settings.save(tracking_path, tracking)
             self.save_url(url)
             if delay:
                 self.logs.clear()
@@ -114,11 +119,12 @@ class Camera:
                 return
             self.follow = data.get("follow", False)
             self.follow_options = [flag for key, flag in (("reverse_x", "--reverse-x"), ("reverse_y", "--reverse-y")) if data.get(key)]
+            self.follow_options += ["--tracking-config", str(tracking_path)]
             if self.target_file.exists():
                 self.target_file.unlink()
             command = [sys.executable, "-u", str(ROOT / "camera_test.py"), "--rtsp", "--rtsp-debug",
                        "--seconds", str(seconds), "--snapshot-hz", "5", "--snapshot", str(self.snapshot)]
-            command += ["--gif", str(self.gif), "--target-file", str(self.target_file)]
+            command += ["--gif", str(self.gif), "--target-file", str(self.target_file), "--tracking-config", str(tracking_path)]
             if self.gif.exists():
                 self.gif.unlink()
             command += ["--capture-only"] if mode == "capture" else ["--detector", mode]

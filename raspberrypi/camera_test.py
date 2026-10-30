@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import signal
 import time
+from motion_tracking import MotionDetector, StableTarget
+from tracking_settings import read as read_tracking, DEFAULTS
 
 
 def load_face_detector(cv2, explicit=None):
@@ -78,7 +80,7 @@ def main():
     parser.add_argument("--rtsp-debug", action="store_true", help="Show raw connection errors, including any credentials in backend output")
     parser.add_argument("--seconds", type=float, default=10)
     parser.add_argument("--preview", action="store_true", help="Open a window on the Pi desktop (not plain SSH)")
-    parser.add_argument("--detector", choices=("person", "face"), default="person", help="Full-body person detector or close-up frontal faces")
+    parser.add_argument("--detector", choices=("person", "face", "motion"), default="person", help="Moving objects, full-body people, or close-up frontal faces")
     parser.add_argument("--face-cascade", type=Path, help="Optional face cascade XML path")
     parser.add_argument("--capture-only", action="store_true", help="Check camera/light without person detection")
     parser.add_argument("--snapshot", type=Path, help="Write an annotated JPEG at --snapshot-hz")
@@ -87,7 +89,13 @@ def main():
     parser.add_argument("--snapshot-hz", type=float, default=1, help="Maximum JPEG preview rate (1-10 Hz)")
     parser.add_argument("--gif", type=Path, help="Save an animated annotated preview (requires python3-pil)")
     parser.add_argument("--target-file", type=Path, help="Publish fresh single-target coordinates for head following")
+    parser.add_argument("--tracking-config", type=Path)
     args = parser.parse_args()
+    tracking = read_tracking(args.tracking_config) if args.tracking_config else dict(DEFAULTS)
+    if args.tracking_config:
+        args.dark_threshold = tracking["dark_threshold"]
+    if args.detector == "motion":
+        args.detect_hz = 5
     if not math.isfinite(args.snapshot_hz) or not 1 <= args.snapshot_hz <= 10:
         parser.error("snapshot-hz must be in [1, 10]")
     if not math.isfinite(args.seconds) or args.seconds <= 0:
@@ -129,9 +137,11 @@ def main():
             previous[sig] = signal.signal(sig, stop)
         if not cap.isOpened():
             raise RuntimeError("Cannot open camera. Check v4l2-ctl --list-devices and --device.")
-        hog = face = None
+        hog = face = motion_detector = None
         if not args.capture_only:
-            if args.detector == "face":
+            if args.detector == "motion":
+                motion_detector = MotionDetector(cv2, tracking)
+            elif args.detector == "face":
                 face = load_face_detector(cv2, args.face_cascade)
             else:
                 hog = cv2.HOGDescriptor()
@@ -139,7 +149,7 @@ def main():
         print("Detector: " + ("disabled" if args.capture_only else args.detector), flush=True)
         if args.snapshot:
             args.snapshot.parent.mkdir(parents=True, exist_ok=True)
-        tracker = Target()
+        tracker = StableTarget(hold_seconds=.8 if args.detector == "motion" else 2)
         started = last_report = time.monotonic()
         next_snapshot = started
         next_detect = started
@@ -155,6 +165,7 @@ def main():
                 first = False
             # Continuous reads discard intervening frames; do not sleep between
             # detections and accumulate a backlog of camera frames.
+            source_aspect = frame.shape[1] / frame.shape[0]
             frame = cv2.resize(frame, (480, 360))
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             brightness = float(gray.mean())
@@ -164,28 +175,37 @@ def main():
             if now >= next_detect:
                 boxes, point = [], None
                 if dark:
-                    tracker = Target()
+                    tracker = StableTarget(hold_seconds=.8 if args.detector == "motion" else 2)
                 elif not args.capture_only:
                     begin = time.monotonic()
-                    if face is not None:
+                    if motion_detector is not None:
+                        found = motion_detector.detect(frame, time.monotonic())
+                    elif face is not None:
                         found = face.detectMultiScale(cv2.equalizeHist(gray), scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
                     else:
                         found, _ = hog.detectMultiScale(frame, winStride=(8, 8), padding=(8, 8), scale=1.08)
                     detector_ms = (time.monotonic() - begin) * 1000
                     boxes = deduplicate([tuple(int(v) for v in b) for b in found])
-                    point = tracker.update(boxes, time.monotonic())
+                    if motion_detector is not None and motion_detector.state != "READY":
+                        tracker.reset()
+                        point = None
+                    else:
+                        point = tracker.update(boxes, time.monotonic())
                     detections += 1
                 if args.target_file:
-                    target = {"time": time.time(), "x": None, "y": None}
-                    if point is not None and len(boxes) == 1 and not dark:
-                        target.update(x=point[0] / 240 - 1, y=point[1] / 180 - 1)
+                    target = {"time": time.time(), "x": None, "y": None, "aspect": source_aspect, "state": tracker.state}
+                    if point is not None and not dark:
+                        target.update(x=point[0] / 240 - 1, y=point[1] / 180 - 1, time=time.time() - (time.monotonic()-tracker.seen))
                     temporary = args.target_file.with_suffix(".tmp")
                     temporary.write_text(json.dumps(target))
                     os.replace(temporary, args.target_file)
                 next_detect = time.monotonic() + 1 / args.detect_hz
             if dark:
                 boxes, point = [], None
-            state = "LOW LIGHT" if dark else "CAPTURE ONLY" if args.capture_only else "TRACKING" if point else "CROWD/NO LOCK" if len(boxes) > 1 else "NO TARGET"
+            state = "LOW LIGHT" if dark else "CAPTURE ONLY" if args.capture_only else motion_detector.state if motion_detector is not None and motion_detector.state != "READY" else tracker.state
+            if motion_detector is not None and motion_detector.region:
+                rx, ry, rw, rh = motion_detector.region
+                cv2.rectangle(frame, (rx, ry), (rx+rw, ry+rh), (255, 160, 0), 1)
             for x, y, w, h in boxes:
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 220, 0), 2)
             if point:

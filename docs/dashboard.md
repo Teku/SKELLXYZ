@@ -123,8 +123,8 @@ tracking/light/timing logs. It requests JPEG frames up to five times per second;
 actual rate depends on camera capture and detector speed on the Pi. This is a
 JPEG image feed, not full-rate video or audio. Hidden browser tabs pause image
 requests; the camera test continues until stopped or its duration expires. The last frame remains after the test
-ends; check Running/Stopped for its state. Camera tests start manually and do
-not drive servos. They can run alongside the show, but detection adds Pi load.
+ends; check Running/Stopped for its state. Camera tests start manually and pause the show for the head signals. Optional
+head following drives the servos during capture; detection adds Pi load.
 Start with capture only. Install python3-opencv on the Pi if needed.
 
 The URL is saved server-side in gitignored `raspberrypi/camera-source.json`,
@@ -172,8 +172,8 @@ capture begins. After a successful test/GIF export, the head shakes no and the
 previous show or head-only mode resumes. A previously stopped show stays stopped.
 Cancel/Stop ends the sequence without the ending gesture or automatic resume.
 The home Stop button also cancels camera tests. Existing servo calibration and
-movement restrictions apply to both signals. Camera tracking itself does not
-steer the head. No extra servo controller runs alongside the show.
+movement restrictions apply to both signals. Camera tracking steers the head only when following is enabled. No extra servo
+controller runs alongside the show.
 
 ## Head-following trial
 
@@ -183,9 +183,9 @@ apply. A separate servo worker runs at 50 Hz while camera detection runs at its
 own speed; the show remains paused until tracking has returned to rest and
 released the servos. The jaw is not driven during tracking.
 
-The first version maps image position to Base/Pitch angles relative to rest,
-using the inner 35% of the existing calibrated range, a center deadband, quintic
-smooth movement and a 10 degrees/sec peak speed limit. Tilt stays at rest.
+The legacy image-relative mapping is available by disabling sidewalk geometry.
+Sidewalk geometry is described below. Both use continuous damped movement with
+a 10 degrees/sec default speed limit. Tilt stays at rest.
 Both trajectory generation and output enforce servo_limits.cfg; no limits change.
 It follows only one detected target. Low light, multiple detections, invalid
 coordinates, or coordinates older than two seconds cause a smooth return to
@@ -197,3 +197,54 @@ mounted on the moving head needs a different feedback mapping. Test direction
 in adequate light before relying on following; false face detections remain
 possible. This is a timed diagnostic trial, not automatic vision-triggered speech
 or the final attract-mode behavior.
+
+## Motion tracking and the sidewalk layout
+
+Camera debug now offers **Motion (any moving object)**. Start with following
+unchecked to inspect the rectangles and GIF. It uses OpenCV MOG2 background
+subtraction, rejects shadow-labelled pixels, filters small blobs, and suppresses
+large whole-region changes such as exposure jumps. It learns the background for
+at least three seconds/ten frames; keep the view clear initially. Motion is not
+person recognition: pets, decorations, headlights and shadows can still trigger
+it, and a stationary person eventually stops being a motion target.
+
+Under **Tracking setup**, narrow the detection region to the sidewalk and exclude
+lights, moving decorations and the skeleton. The blue rectangle shows the region.
+Three matching observations confirm a target. A time-based filter smooths its
+position, and a brief gap holds position for at most 0.8 seconds in motion mode (up to two
+seconds for slower face/person detection). A distant object
+cannot immediately steal the target; ambiguous new crowds do not acquire one.
+Dark or major scene changes immediately clear tracking. The follower independently
+rejects stale packets and continues running smoothly even while detection is slow.
+
+The confirmed layout is a fixed ground camera directly below a skull about
+12 feet up, looking toward a sidewalk about 14 feet out. **Aim using sidewalk
+geometry** projects the target horizontally onto that assumed sidewalk plane.
+The default aim height is 5 feet; vertical blob motion does not make the skull
+bob up/down. As people move sideways, both yaw and downward elevation change.
+This estimates position for a known walkway; it does not measure a person's depth
+or actual height. People well in front of/behind the sidewalk will be mis-aimed.
+
+**Calibrate before judging accuracy:**
+
+- Horizontal field of view defaults to 60 degrees as a placeholder, not a known
+  camera specification. Enter the camera's actual horizontal FOV at its current zoom.
+- Enter camera upward tilt and yaw relative to the sidewalk center. The source
+  aspect ratio is used when correcting for camera tilt.
+- Enter the direction the skull actually looks at its calibrated servo rest:
+  rest yaw, and rest elevation (negative for downward). These change the aiming
+  transform, not servo_limits.cfg. Use the reverse-axis controls for linkage direction.
+- At the sidewalk center, a 5-foot aim height calls for 26.6 degrees below horizontal.
+  If rest is level, the default Pitch lower limit of -24 degrees cannot reach this;
+  the initial 35% travel envelope is narrower still. Adjust the physical resting aim
+  or its measured calibration, never extend a mechanical limit to compensate.
+- The travel fraction may be increased after direction/clearance checks, up to
+  the existing calibrated range. All outputs remain clamped by servo_limits.cfg.
+
+Tracking uses continuous damped motion instead of waiting for each gesture to end.
+The default maximum speed is 10 degrees/sec and acceleration is 20 degrees/sec
+squared, adjustable within bounded settings. Lost targets and Stop ease back to
+rest and release PWM. Settings save on Start camera test in gitignored
+`raspberrypi/tracking-settings.json` and survive deployment.
+
+Detector reference: https://docs.opencv.org/4.0.0/d1/dc5/tutorial_background_subtraction.html
