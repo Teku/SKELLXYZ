@@ -138,8 +138,8 @@ class TrackingTests(unittest.TestCase):
         self.assertTrue(valid)
         for name in rest:
             low, high = configs[name]["range"]
-            self.assertGreaterEqual(pose[name], rest[name] + (low - rest[name]) * .35)
-            self.assertLessEqual(pose[name], rest[name] + (high - rest[name]) * .35)
+            self.assertGreaterEqual(pose[name], rest[name] + (low - rest[name]))
+            self.assertLessEqual(pose[name], rest[name] + (high - rest[name]))
         self.assertEqual(pose["Tilt"], rest["Tilt"])
         reversed_pose, _ = target_pose(configs, data, 10, True, True)
         self.assertLess(reversed_pose["Base"], rest["Base"])

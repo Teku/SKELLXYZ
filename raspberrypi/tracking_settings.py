@@ -6,7 +6,7 @@ from pathlib import Path
 
 DEFAULTS = dict(geometry=True, head_height=12., sidewalk_distance=14., aim_height=5.,
                 hfov=60., camera_pitch=0., camera_yaw=0., rest_yaw=0., rest_pitch=0.,
-                range_fraction=.35, speed=10., acceleration=20.,
+                range_fraction=1., speed=10., acceleration=20.,
                 roi_left=0., roi_top=0., roi_right=100., roi_bottom=100.,
                 min_area=.3, dark_threshold=25.)
 LIMITS = dict(head_height=(1,30), sidewalk_distance=(2,100), aim_height=(0,10),

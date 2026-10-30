@@ -66,9 +66,9 @@ class Outputs:
 
 
 def gesture(configs, rng):
-    # Start conservatively: use the inner 35% of each side of the tuned range.
-    return {n: rng.uniform(configs[n]["rest"] + (configs[n]["range"][0] - configs[n]["rest"]) * 0.35,
-                           configs[n]["rest"] + (configs[n]["range"][1] - configs[n]["rest"]) * 0.35)
+    # Use 70% of each side of the calibrated range for visible show motion.
+    return {n: rng.uniform(configs[n]["rest"] + (configs[n]["range"][0] - configs[n]["rest"]) * 0.70,
+                           configs[n]["rest"] + (configs[n]["range"][1] - configs[n]["rest"]) * 0.70)
             for n in HEAD}
 
 

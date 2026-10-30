@@ -32,7 +32,7 @@ class MotionTests(unittest.TestCase):
                     for n in HEAD:
                         low, high = cfg[n]["range"]
                         rest = cfg[n]["rest"]
-                        self.assertTrue(rest + 0.35 * (low - rest) - 1e-9 <= pose[n] <= rest + 0.35 * (high - rest) + 1e-9)
+                        self.assertTrue(rest + 0.7 * (low - rest) - 1e-9 <= pose[n] <= rest + 0.7 * (high - rest) + 1e-9)
                         if name in ("yes", "no", "happy") and n != {"yes": "Pitch", "no": "Base", "happy": "Tilt"}[name]:
                             self.assertEqual(pose[n], rest)
 
@@ -75,11 +75,11 @@ class SpeechTests(unittest.TestCase):
             clock = [0.0]
             def sleep(seconds):
                 clock[0] += seconds
-                if clock[0] > 45:
+                if clock[0] > 75:
                     raise AssertionError("Head-only mode failed to stop")
             args = SimpleNamespace(action=action, no_voice=True, clip=None,
                                    dry_run=True, speed=10, seed=1, once=False,
-                                   seconds=0 if action else 20, pause=0.6)
+                                   seconds=0 if action else 40, pause=0.6)
             output = io.StringIO()
             poses = []
             with patch("skeleton_run.settings", side_effect=AssertionError("Audio config accessed")), patch("skeleton_run.Speech", side_effect=AssertionError("Audio initialized")), patch("skeleton_run.check_clip", side_effect=AssertionError("Clip accessed")), patch("skeleton_run.time.monotonic", side_effect=lambda: clock[0]), patch("skeleton_run.time.sleep", side_effect=sleep), patch("skeleton_run.Outputs.write", side_effect=lambda pose: poses.append(pose)), redirect_stdout(output):
@@ -89,7 +89,7 @@ class SpeechTests(unittest.TestCase):
                 self.assertEqual(events, ["Silent gesture: " + action])
             else:
                 self.assertGreaterEqual(len(events), 2)
-                self.assertGreaterEqual(clock[0], 20)
+                self.assertGreaterEqual(clock[0], 40)
             self.assertNotIn("Speaking:", output.getvalue())
             self.assertTrue(all(pose["Mouth"] is None for pose in poses))
             self.assertIn("Stopped; servo outputs released", output.getvalue())

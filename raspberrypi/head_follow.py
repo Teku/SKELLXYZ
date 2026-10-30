@@ -29,8 +29,9 @@ def target_pose(configs, data, now, reverse_x=False, reverse_y=False, settings=N
         if abs(value) < 0.08:
             value = 0
         low, high = configs[name]["range"]
-        # Same conservative inner 35% envelope as the existing show gestures.
-        rest[name] += value * 0.35 * ((high - rest[name]) if value >= 0 else (rest[name] - low))
+        # Respect the selected fraction within the existing calibrated limits.
+        fraction = settings["range_fraction"] if settings else 1.
+        rest[name] += value * fraction * ((high - rest[name]) if value >= 0 else (rest[name] - low))
     return rest, True
 
 
