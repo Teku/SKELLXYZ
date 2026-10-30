@@ -76,7 +76,7 @@ class DashboardTests(unittest.TestCase):
             with patch("skeleton_dashboard.threading.Timer") as timer, patch("skeleton_dashboard.subprocess.Popen") as spawn:
                 camera.start({"url": "rtsp://camera/live"})
                 self.assertTrue(camera.status()["scheduled"])
-                self.assertEqual(timer.call_args.args[0], 90)
+                self.assertEqual(timer.call_args.args[0], 10)
                 spawn.assert_not_called()
                 callback = timer.call_args.args[1]
                 camera.stop()

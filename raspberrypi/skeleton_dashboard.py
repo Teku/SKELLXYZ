@@ -94,10 +94,10 @@ class Camera:
                     raise ValueError("Tracking options must be true or false")
             if data.get("follow") and mode == "capture":
                 raise ValueError("Choose Motion, Full body or Face to follow a target")
-            seconds = data.get("seconds", 10)
+            seconds = data.get("seconds", 30)
             if type(seconds) is not int or not 5 <= seconds <= 3600:
                 raise ValueError("Camera duration must be 5–3600 seconds")
-            delay = data.get("delay", 90)
+            delay = data.get("delay", 10)
             if type(delay) is not int or not 0 <= delay <= 600:
                 raise ValueError("Start delay must be 0-600 seconds")
             url = data.get("url") or self.saved_url()
