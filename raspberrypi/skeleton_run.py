@@ -151,7 +151,7 @@ def run(args):
                     completed += 1
                     print("Speech finished; returning to rest", flush=True)
                     # Complete the current gesture before returning, preserving smooth endpoints.
-                    next_clip = max(now, motion.started + motion.duration) + 2.0 + args.pause
+                    next_clip = max(now, motion.started + motion.duration) + 1.0 + args.pause
                 if not speaking and motion.finished(now):
                     if silent_active:
                         if silent_steps:
@@ -164,7 +164,7 @@ def run(args):
                             next_clip = now + args.pause
                             print("Silent gesture finished; resting", flush=True)
                     elif motion.target != rest:
-                        motion.move(rest, now, 2.0)
+                        motion.move(rest, now, 1.0)
                         next_clip = max(next_clip, now + motion.duration + args.pause)
                     elif args.once and completed:
                         break
@@ -198,7 +198,7 @@ def run(args):
                         print("Background music: " + wanted_music, flush=True)
                 if speaking and motion.finished(now):
                     target = gesture(configs, rng)
-                    motion.move(target, now, rng.uniform(1.5, 3.0))
+                    motion.move(target, now, 1.0)
                     print("Head gesture: " + str({n: round(v, 1) for n, v in target.items()}), flush=True)
                 pose = motion.sample(now)
                 at_rest = not speaking and not silent_active and motion.finished(now) and motion.target == rest
@@ -223,7 +223,7 @@ def run(args):
                 outputs.write(dict(motion.sample(now), Mouth=None))
                 time.sleep(0.02)
                 now = time.monotonic()
-            motion.move(rest, now, 1.5)
+            motion.move(rest, now, 1.0)
             while not motion.finished(time.monotonic()):
                 outputs.write(dict(motion.sample(time.monotonic()), Mouth=None))
                 time.sleep(0.02)
@@ -241,7 +241,7 @@ def main():
     parser.add_argument("--clip", help="Play a particular 16-bit PCM WAV instead of cycling existing vocals")
     parser.add_argument("--once", action="store_true", help="Play one clip (or one random expression with --no-voice), return to rest, and exit")
     parser.add_argument("--seconds", type=float, default=0, help="Stop trial after this many seconds (0: unlimited)")
-    parser.add_argument("--speed", type=float, default=18, help="Maximum head speed in degrees/second")
+    parser.add_argument("--speed", type=float, default=100, help="Maximum head speed in degrees/second")
     parser.add_argument("--pause", type=float, default=5, help="Pause between events in seconds")
     parser.add_argument("--silent-chance", type=float, default=0.35, help="Chance of a silent expression instead of the next recording (0..1); never two in a row")
     parser.add_argument("--hold-idle", action="store_true", help="Keep head servos holding rest during pauses instead of releasing PWM")

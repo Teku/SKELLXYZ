@@ -6,7 +6,7 @@ from pathlib import Path
 from skeleton_speech import CHATTER, check_clip
 
 PATH = Path(__file__).resolve().parent / "dashboard-settings.json"
-DEFAULTS = dict(volume=75, music_volume=25, pause=15, speed=10,
+DEFAULTS = dict(volume=75, music_volume=25, pause=15, speed=100,
                 silent_chance=0.35, clips=[], music="", hold_idle=False)
 
 
@@ -21,7 +21,7 @@ def validate(value):
         raise ValueError("Unknown settings")
     result = dict(DEFAULTS, **value)
     for name, low, high in (("volume", 0, 100), ("music_volume", 0, 100),
-                            ("pause", 0.5, 300), ("speed", 1, 30), ("silent_chance", 0, 1)):
+                            ("pause", 0.5, 300), ("speed", 1, 100), ("silent_chance", 0, 1)):
         number = result[name]
         if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not low <= number <= high:
             raise ValueError("Invalid " + name)

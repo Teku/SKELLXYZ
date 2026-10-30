@@ -19,12 +19,12 @@ def sequence(name, configs, direction=1):
         return result
 
     if name == "look":
-        steps = [(pose(Base=0.7, Pitch=0.2), 2.0),
+        steps = [(pose(Base=0.7, Pitch=0.2), 1.0),
                  (pose(Base=0.7, Pitch=0.2), 0.8),
-                 (pose(Base=-0.7, Pitch=-0.2), 2.5),
+                 (pose(Base=-0.7, Pitch=-0.2), 1.0),
                  (pose(Base=-0.7, Pitch=-0.2), 0.8)]
     else:
         axis = {"yes": "Pitch", "no": "Base", "happy": "Tilt"}[name]
         amount = 0.7
         steps = [(pose(**{axis: amount * sign}), 1.0) for sign in (1, -1, 1, -1)]
-    return steps + [(pose(), 1.5)]
+    return steps + [(pose(), 1.0)]

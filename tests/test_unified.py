@@ -21,6 +21,23 @@ from contextlib import redirect_stderr
 
 
 class MotionTests(unittest.TestCase):
+    def test_expressions_complete_each_moving_leg_in_one_second_at_show_speed(self):
+        from skeleton_preferences import DEFAULTS
+        cfg = get_servo_configs()
+        for name in NAMES:
+            for direction in (-1, 1):
+                motion = Motion(cfg, speed=DEFAULTS['speed'])
+                now = 0.
+                for target, requested in sequence(name, cfg, direction):
+                    moving = any(abs(target[n]-motion.pose[n]) > 1e-8 for n in HEAD)
+                    motion.move(target, now, requested)
+                    if moving:
+                        self.assertAlmostEqual(motion.duration, 1.)
+                    now += motion.duration
+                    pose = motion.sample(now)
+                    for n in HEAD:
+                        self.assertAlmostEqual(pose[n], target[n])
+
     def test_expressions_are_bounded_and_return_to_rest(self):
         cfg = get_servo_configs()
         for name in NAMES:
