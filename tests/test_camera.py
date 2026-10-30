@@ -8,9 +8,60 @@ from camera_test import Target, deduplicate, load_face_detector
 from camera_source import open_source, validate_rtsp, redact_diagnostic
 from unittest.mock import patch
 import os
+import threading
 
 
 class TrackingTests(unittest.TestCase):
+    def test_rtsp_reader_keeps_latest_frame_and_owns_shutdown(self):
+        from camera_source import LatestFrameSource
+        ready, finish = threading.Event(), threading.Event()
+        class Capture:
+            count = 0
+            released = False
+            reading = False
+            def read(self):
+                self.count += 1
+                if self.count <= 3:
+                    return True, self.count
+                self.reading = True
+                ready.set()
+                finish.wait(3)
+                self.reading = False
+                return False, None
+            def release(self):
+                assert not self.reading
+                self.released = True
+        cap = Capture()
+        reader = LatestFrameSource(cap)
+        try:
+            self.assertTrue(ready.wait(2))
+            ok, frame, captured_at = reader.read()
+            self.assertTrue(ok)
+            self.assertEqual(frame, 3)
+            self.assertIsInstance(captured_at, float)
+            self.assertEqual(reader.dropped, 2)
+            self.assertEqual(reader.read(timeout=0), (False, None, None))
+        finally:
+            finish.set()
+            reader.close()
+        self.assertTrue(cap.released)
+        self.assertFalse(reader.worker.is_alive())
+        self.assertEqual(reader.read(timeout=0), (False, None, None))
+
+    def test_rtsp_reader_failure_releases_capture_without_leaking_backend_error(self):
+        from camera_source import LatestFrameSource
+        class Capture:
+            released = False
+            def read(self):
+                raise RuntimeError('rtsp://viewer:secret-value@camera/live')
+            def release(self):
+                self.released = True
+        cap = Capture()
+        reader = LatestFrameSource(cap)
+        self.assertEqual(reader.read(), (False, None, None))
+        reader.close()
+        self.assertTrue(cap.released)
+
     def test_rtsp_backend_timeouts_and_no_url_in_failure(self):
         calls = []
         secret_url = "rtsp://test:dummy-password@192.0.2.1/live"

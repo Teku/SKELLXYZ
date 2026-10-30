@@ -225,3 +225,5 @@ Inspired by the [3-Axis Skull Mod for 12ft Skeleton](https://hackaday.io/project
 ChatterPi jaw animation: see `raspberrypi/vendor/ChatterPi/README.md`.
 
 Head following holds its last target for five seconds after tracking is lost, then smoothly returns to the configured rest position and releases the servos. Reacquiring a target interrupts the hold immediately. Stopping or ending the camera test bypasses the hold and performs the normal cleanup; existing speed, acceleration, and servo limits still apply.
+
+RTSP capture drains in a separate reader and keeps only the newest unread frame, so detection and previews skip superseded frames rather than building a queue. GIF previews use fast octree color conversion to avoid blocking the Pi's camera loop. Target freshness includes time spent processing a decoded frame; this does not measure delay already present inside the camera or decoder. Compare the camera's timestamp overlay with the Pi clock when checking end-to-end delay.

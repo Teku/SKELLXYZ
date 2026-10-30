@@ -2,7 +2,7 @@
 """Standalone USB/RTSP camera tracking experiment. No GPIO or audio imports."""
 import argparse
 import getpass
-from camera_source import open_source, read_source, validate_rtsp, quiet_native
+from camera_source import open_source, read_source, validate_rtsp, quiet_native, LatestFrameSource
 import math
 import json
 import os
@@ -127,6 +127,7 @@ def main():
         except ImportError:
             print("GIF unavailable: install python3-pil on the Pi", flush=True)
     cap = open_source(cv2, args.device, rtsp_url, debug=args.rtsp_debug)
+    reader = None
     stopping = False
     previous = {}
     def stop(signum, frame):
@@ -137,6 +138,8 @@ def main():
             previous[sig] = signal.signal(sig, stop)
         if not cap.isOpened():
             raise RuntimeError("Cannot open camera. Check v4l2-ctl --list-devices and --device.")
+        if args.rtsp:
+            reader = LatestFrameSource(cap)
         hog = face = motion_detector = None
         if not args.capture_only:
             if args.detector == "motion":
@@ -157,14 +160,18 @@ def main():
         frames, detections, detector_ms = 0, 0, 0.0
         first = True
         while not stopping and time.monotonic() - started < args.seconds:
-            ok, frame = read_source(cap, args.rtsp)
+            if reader is not None:
+                ok, frame, captured_at = reader.read()
+            else:
+                ok, frame = read_source(cap)
+                captured_at = time.time()
             if not ok or frame is None:
                 raise RuntimeError("Camera stopped returning frames; check source connection and device ownership.")
             if first:
                 print("Camera frame: %dx%d; source=%s" % (frame.shape[1], frame.shape[0], "RTSP/TCP" if args.rtsp else "USB (requested 640x480 MJPEG/15fps)"), flush=True)
                 first = False
-            # Continuous reads discard intervening frames; do not sleep between
-            # detections and accumulate a backlog of camera frames.
+            # RTSP capture drains independently; detection consumes the newest
+            # frame instead of queuing video behind preview/detector work.
             source_aspect = frame.shape[1] / frame.shape[0]
             frame = cv2.resize(frame, (480, 360))
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -195,7 +202,8 @@ def main():
                 if args.target_file:
                     target = {"time": time.time(), "x": None, "y": None, "aspect": source_aspect, "state": tracker.state}
                     if point is not None and not dark:
-                        target.update(x=point[0] / 240 - 1, y=point[1] / 180 - 1, time=time.time() - (time.monotonic()-tracker.seen))
+                        target.update(x=point[0] / 240 - 1, y=point[1] / 180 - 1,
+                                      time=min(captured_at, time.time() - (time.monotonic()-tracker.seen)))
                     temporary = args.target_file.with_suffix(".tmp")
                     temporary.write_text(json.dumps(target))
                     os.replace(temporary, args.target_file)
@@ -230,9 +238,13 @@ def main():
         if gif is not None and gif.save():
             print("Animated GIF preview ready", flush=True)
         elapsed = max(0.001, time.monotonic() - started)
+        if reader is not None:
+            print("RTSP skipped %d superseded frames" % reader.dropped, flush=True)
         print("Finished: %.1f capture fps, %.2f detections/sec; no servos controlled." % (frames / elapsed, detections / elapsed))
     finally:
-        if args.rtsp:
+        if reader is not None:
+            reader.close()
+        elif args.rtsp:
             with quiet_native():
                 cap.release()
         else:

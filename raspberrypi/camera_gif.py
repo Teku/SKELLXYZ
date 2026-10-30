@@ -15,7 +15,10 @@ class GifPreview:
     def add(self, rgb, now):
         if now < self.next_frame:
             return
-        frame = self.Image.fromarray(rgb).resize((320, 240)).convert("P", palette=self.Image.ADAPTIVE, colors=128)
+        # Median-cut adaptive conversion takes nearly a second per frame on
+        # the Pi 3 and lets RTSP frames queue up behind the preview encoder.
+        frame = self.Image.fromarray(rgb).resize((320, 240)).quantize(
+            colors=128, method=self.Image.FASTOCTREE)
         self.frames.append((now, frame))
         self.next_frame = now + 0.5
 

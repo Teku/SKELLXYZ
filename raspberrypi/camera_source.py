@@ -4,6 +4,8 @@ import os
 import re
 import tempfile
 import base64
+import threading
+import time
 from urllib.parse import urlsplit, unquote
 
 
@@ -22,7 +24,8 @@ def validate_rtsp(url):
 @contextmanager
 def quiet_native():
     # OpenCV/FFmpeg can print the credential-bearing URL directly to fd 2.
-    # This standalone diagnostic has no other application worker threads.
+    # RTSP's reader owns native capture calls; Python errors are reported by
+    # the main loop after stderr is restored.
     saved = os.dup(2)
     try:
         with open(os.devnull, "wb") as sink:
@@ -114,3 +117,72 @@ def read_source(cap, rtsp=False):
             return cap.read()
     except Exception:
         raise RuntimeError("RTSP read failed; check the camera and network connection") from None
+
+
+class LatestFrameSource:
+    """Drain RTSP independently of detection, retaining just one unread frame.
+
+    The reader alone owns read/release, including when shutdown interrupts a
+    blocked network read. Backend read timeouts still apply.
+    """
+    def __init__(self, cap):
+        self.cap = cap
+        self.condition = threading.Condition()
+        self.stopping = False
+        self.finished = False
+        self.frame = None
+        self.captured_at = None
+        self.dropped = 0
+        self.worker = threading.Thread(target=self._run, daemon=True)
+        self.worker.start()
+
+    def _run(self):
+        try:
+            while True:
+                with self.condition:
+                    if self.stopping:
+                        return
+                ok, frame = read_source(self.cap, True)
+                if not ok or frame is None:
+                    return
+                captured_at = time.time()
+                with self.condition:
+                    if self.stopping:
+                        return
+                    if self.frame is not None:
+                        self.dropped += 1
+                    self.frame, self.captured_at = frame, captured_at
+                    self.condition.notify_all()
+        except Exception:
+            # Never forward a backend exception that might contain the URL.
+            pass
+        finally:
+            try:
+                with quiet_native():
+                    self.cap.release()
+            finally:
+                with self.condition:
+                    self.frame = None
+                    self.finished = True
+                    self.condition.notify_all()
+
+    def read(self, timeout=6):
+        with self.condition:
+            self.condition.wait_for(
+                lambda: self.frame is not None or self.finished or self.stopping,
+                timeout=timeout)
+            if self.frame is None or self.finished or self.stopping:
+                return False, None, None
+            frame, captured_at = self.frame, self.captured_at
+            self.frame = None
+            return True, frame, captured_at
+
+    def close(self):
+        with self.condition:
+            self.stopping = True
+            self.frame = None
+            self.condition.notify_all()
+        # Do not release a capture concurrently with a native read.
+        self.worker.join(timeout=11)
+        if self.worker.is_alive():
+            raise RuntimeError("RTSP reader did not stop within its read timeout")

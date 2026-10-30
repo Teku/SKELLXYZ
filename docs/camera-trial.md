@@ -23,11 +23,14 @@ try a low-resolution substream on the Pi 3 if one is available. Downscaling
 for detection does not reduce the cost of decoding a high-resolution stream.
 Face mode (`--detector face`) and preview/snapshot options remain available.
 
-This is still a standalone diagnostic: no servo/audio integration, automatic
-reconnection, or guaranteed low-latency tracking. The existing synchronous
-detection loop may accumulate stream latency while detecting; measure it
-before using positions to control motion. RTSP connectivity must be tested
-on the Pi's network.
+This command is still a standalone diagnostic: no servo/audio integration,
+automatic reconnection, or guaranteed low-latency tracking. RTSP uses a
+dedicated reader with one unread frame; processing consumes the latest frame
+and skips superseded frames. The final status reports the number skipped.
+This prevents detector/preview work from queuing decoded frames, but cannot
+remove delay inside the camera or decoder. Compare the timestamp overlay with
+the Pi clock before using positions to control motion. RTSP connectivity must
+be tested on the Pi's network. The dashboard separately supports head following.
 
 `raspberrypi/camera_test.py` never imports servo/audio code or drives GPIO.
 Start with the skeleton controller stopped so the camera is stationary and
