@@ -187,13 +187,17 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(b"<h1>Skeleton</h1>", request("GET", "/"))
             self.assertIn(b"400", request("POST", "/api/settings", {"speed": 999}, True))
 
-    def test_background_yields_to_speech_without_jaw_motion(self):
+    def test_background_continues_under_speech_without_jaw_motion(self):
         clock, events, poses = [0.0], [], []
         class Player:
             jaw = -9
             volume = 100
             def __init__(self, *args, **kwargs):
                 self.end = 0
+            def set_background(self, path, volume):
+                if path and getattr(self, "background", None) != path:
+                    events.append("ambient")
+                self.background = path
             def start(self, path, now):
                 self.stop()
                 events.append(path.parent.name)
@@ -211,7 +215,8 @@ class DashboardTests(unittest.TestCase):
             run(args)
         self.assertIn("ambient", events)
         self.assertIn("vocals", events)
-        self.assertTrue(all(events[i-1] == "stop" for i, value in enumerate(events) if value in ("ambient", "vocals")))
+        self.assertEqual(events.count("ambient"), 1)
+        self.assertGreater(events.count("vocals"), 1)
         self.assertTrue(all(p["Mouth"] is None for t, p in poses if t < 0.5))
 
     def test_preferences_reject_unsafe_and_out_of_range_inputs(self):

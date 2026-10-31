@@ -13,12 +13,16 @@ an already scheduled pause completes with its previous deadline. The software
 volume does not change FPP's system mixer. Jaw animation follows the original
 audio level so reducing volume does not reduce mouth motion.
 
-Music is selected from `vendor/ChatterPi/src/ambient/*.wav` and plays between
-sayings and during silent gestures, restarting when necessary. It stops during
-speech and never drives the jaw. This first version does not mix music under
-speech, crossfade, or resume the music at its previous position. Head-only and
-single-action modes never initialize audio. Both voice and music require
-mono/stereo 16-bit PCM WAV files. Add recordings to `vocals/` and music to
+Music is selected from `vendor/ChatterPi/src/ambient/*.wav` and loops continuously,
+including during speech and silent gestures. Speech ducks music to 20% of the
+selected music volume, with approximately 50 ms fade-down and 400 ms recovery.
+The music cursor keeps advancing during speech; it rewinds only at the end of
+the track, or when selecting a different track. Music never drives the jaw.
+Turning music Off stops that track; stopping the show closes the audio output.
+Head-only and single-expression modes never initialize audio. Both voice and
+music in the show require 44100 Hz mono/stereo 16-bit PCM WAV files; MP3 playback
+and soundtrack extraction are separate follow-up work. Add recordings to
+`vocals/` and music to
 `ambient/`, then reload the dashboard to refresh the catalog. No file upload
 endpoint is exposed. Empty playlist uses the existing default v01–v10 sequence.
 

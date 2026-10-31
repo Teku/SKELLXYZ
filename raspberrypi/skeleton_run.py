@@ -12,7 +12,8 @@ from servo_config import get_servo_configs
 from skeleton_motion import HEAD, Motion, validate_configs
 from skeleton_gestures import NAMES, sequence
 from skeleton_lock import hardware_lock
-from skeleton_speech import CHATTER, Speech, check_clip, settings
+from skeleton_speech import CHATTER, check_clip, settings
+from skeleton_audio_mix import ShowAudio as Speech
 
 
 class Outputs:
@@ -142,7 +143,12 @@ def run(args):
                         print("Settings not applied: " + str(exc), flush=True)
                     next_settings = now + 1
                 if speech is not None and preferences:
-                    speech.volume = preferences["music_volume"] if music_playing else preferences["volume"]
+                    speech.volume = preferences["volume"]
+                    wanted_music = preferences["music"] if not args.once else ""
+                    speech.set_background(CHATTER / "ambient" / wanted_music if wanted_music else None, preferences["music_volume"])
+                    if wanted_music != music_playing:
+                        music_playing = wanted_music
+                        print("Background music: " + (wanted_music or "Off"), flush=True)
                 if args.seconds and now - started >= args.seconds:
                     break
                 if speaking and not speech.active(now):
@@ -179,23 +185,12 @@ def run(args):
                         else:
                             clip = clips[position % len(clips)]
                             print("Speaking: " + clip.name, flush=True)
-                            music_playing = None
                             if preferences:
                                 speech.volume = preferences["volume"]
                             speech.start(clip, now)
                             position += 1
                             speaking = True
                             last_was_silent = False
-                if speech is not None and not speaking and not args.once and preferences:
-                    wanted_music = preferences["music"]
-                    if music_playing and (music_playing != wanted_music or not speech.active(now)):
-                        speech.stop()
-                        music_playing = None
-                    if wanted_music and not music_playing:
-                        speech.volume = preferences["music_volume"]
-                        speech.start(CHATTER / "ambient" / wanted_music, now)
-                        music_playing = wanted_music
-                        print("Background music: " + wanted_music, flush=True)
                 if speaking and motion.finished(now):
                     target = gesture(configs, rng)
                     motion.move(target, now, 1.0)
