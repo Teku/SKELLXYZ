@@ -10,12 +10,15 @@ class ShowAudio(Speech):
     RATE = 44100
 
     def __init__(self, *args, **kwargs):
+        import numpy
+        self.np = numpy
         super().__init__(*args, **kwargs)
         self.lock = threading.RLock()
         self.background = None
         self.background_path = None
         self.music_volume = 25
         self.duck = 1.
+        self.underflows = 0
 
     def _open_clip(self, path):
         check_clip(path)
@@ -30,6 +33,8 @@ class ShowAudio(Speech):
             return
         def callback(in_data, frame_count, time_info, status):
             try:
+                if status:
+                    self.underflows += 1
                 return self.render(frame_count), self.api.paContinue
             except Exception as exc:
                 self.error = exc
@@ -113,12 +118,12 @@ class ShowAudio(Speech):
             start = self.duck
             self.duck += change
             vg, mg = self.volume / 100, self.music_volume / 100
-            for i in range(frames * 2):
-                gain = start + change * ((i // 2 + 1) / frames)
-                voice[i] = max(-32768, min(32767, round(voice[i]*vg + music[i]*mg*gain)))
-            if sys.byteorder != 'little':
-                voice.byteswap()
-            return voice.tobytes()
+            # Python's per-sample loop consumed ~14 ms of a 20 ms buffer on
+            # the Pi 3. Keep the same gain ramp/clipping in compiled operations.
+            np = self.np
+            gain = np.repeat(start + change * (np.arange(1, frames+1) / frames), 2)
+            mixed = np.asarray(voice, dtype=np.float64)*vg + np.asarray(music, dtype=np.float64)*mg*gain
+            return np.clip(np.rint(mixed), -32768, 32767).astype('<i2').tobytes()
 
     def active(self, now):
         if self.error:

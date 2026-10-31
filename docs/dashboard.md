@@ -24,7 +24,15 @@ music in the show require 44100 Hz mono/stereo 16-bit PCM WAV files; MP3 playbac
 and soundtrack extraction are separate follow-up work. Add recordings to
 `vocals/` and music to
 `ambient/`, then reload the dashboard to refresh the catalog. No file upload
-endpoint is exposed. Empty playlist uses the existing default v01–v10 sequence.
+endpoint is exposed. Empty playlist uses all default v01–v10 recordings. Each run
+shuffles the selected sayings; every clip plays once per cycle before reshuffling,
+with no adjacent repeat across cycle boundaries when at least two clips are selected.
+A single selected clip necessarily repeats. Live playlist changes start a fresh
+shuffle and avoid the previous clip when another is available.
+
+Continuous mixing requires NumPy (`sudo apt-get install python3-numpy`), already
+installed with OpenCV on the deployed Pi. Mixing uses compiled array operations
+to keep audio callback work below its 20 ms buffer deadline.
 
 ## First run on the Pi
 

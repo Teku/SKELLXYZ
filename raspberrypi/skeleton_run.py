@@ -66,6 +66,29 @@ class Outputs:
                 cleanup.callback(servo.detach)
 
 
+class SayingShuffle:
+    """Play each selected clip once per shuffle without boundary doubles."""
+    def __init__(self, rng):
+        self.rng = rng
+        self.pool = ()
+        self.remaining = []
+        self.last = None
+
+    def next(self, clips):
+        pool = tuple(dict.fromkeys(clips))
+        if not pool:
+            raise ValueError('No sayings selected')
+        if pool != self.pool:
+            self.pool, self.remaining = pool, []
+        if not self.remaining:
+            self.remaining = list(pool)
+            self.rng.shuffle(self.remaining)
+            if len(self.remaining) > 1 and self.remaining[-1] == self.last:
+                self.remaining[0], self.remaining[-1] = self.remaining[-1], self.remaining[0]
+        self.last = self.remaining.pop()
+        return self.last
+
+
 def gesture(configs, rng):
     # Use 70% of each side of the calibrated range for visible show motion.
     return {n: rng.uniform(configs[n]["rest"] + (configs[n]["range"][0] - configs[n]["rest"]) * 0.70,
@@ -117,7 +140,7 @@ def run(args):
         started = time.monotonic()
         next_clip = started + 0.5
         speaking = False
-        position = 0
+        saying_order = SayingShuffle(rng)
         completed = 0
         resting_since = None
         silent_steps = []
@@ -183,12 +206,11 @@ def run(args):
                             motion.move(target, now, duration)
                             print("Silent gesture: " + name, flush=True)
                         else:
-                            clip = clips[position % len(clips)]
+                            clip = saying_order.next(clips)
                             print("Speaking: " + clip.name, flush=True)
                             if preferences:
                                 speech.volume = preferences["volume"]
                             speech.start(clip, now)
-                            position += 1
                             speaking = True
                             last_was_silent = False
                 if speaking and motion.finished(now):

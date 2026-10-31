@@ -16,11 +16,25 @@ from skeleton_motion import HEAD, Motion, validate_configs
 from skeleton_speech import Speech, process_chunk, settings, check_clip, CHATTER
 from skeleton_run import Outputs, run
 from skeleton_gestures import NAMES, sequence
+from skeleton_run import SayingShuffle
 from skeleton_audio_init import initialize, report
 from contextlib import redirect_stderr
 
 
 class MotionTests(unittest.TestCase):
+    def test_sayings_shuffle_without_repeats_within_or_between_cycles(self):
+        import random
+        for seed in range(20):
+            order = SayingShuffle(random.Random(seed))
+            pool = ['a', 'b', 'c', 'd']
+            played = [order.next(pool) for _ in range(80)]
+            self.assertTrue(all(a != b for a,b in zip(played, played[1:])))
+            for i in range(0,80,4):
+                self.assertEqual(set(played[i:i+4]), set(pool))
+            last = played[-1]
+            self.assertNotEqual(order.next([last, 'new']), last)
+            self.assertEqual(order.next(['only']), 'only')
+
     def test_expressions_complete_each_moving_leg_in_one_second_at_show_speed(self):
         from skeleton_preferences import DEFAULTS
         cfg = get_servo_configs()
